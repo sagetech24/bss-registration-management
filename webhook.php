@@ -15,6 +15,7 @@ $signature = rm_payment_get_webhook_signature();
 $payload = rm_payment_parse_webhook_payload($raw_payload);
 
 if (!rm_payment_verify_webhook_request($raw_payload, $signature, $payload)) {
+    $config_hint = rm_payment_webhook_salt_config_hint();
     error_log(
         '[rm_payment] Webhook signature verification failed.'
         . ' has_hmac=' . (isset($payload['hmac']) && (string) $payload['hmac'] !== '' ? 'yes' : 'no')
@@ -22,6 +23,7 @@ if (!rm_payment_verify_webhook_request($raw_payload, $signature, $payload)) {
         . ' raw_len=' . strlen($raw_payload)
         . ' api_salts=' . count(rm_payment_collect_salts('api'))
         . ' webhook_salts=' . count(rm_payment_collect_salts('webhook'))
+        . ($config_hint !== '' ? ' hint=' . $config_hint : '')
     );
     status_header(401);
     header('Content-Type: text/plain; charset=utf-8');
@@ -32,6 +34,6 @@ if (!rm_payment_verify_webhook_request($raw_payload, $signature, $payload)) {
 $result = rm_payment_process_webhook_payload($payload);
 
 status_header(200);
-header('Content-Type: text/plain; charset=utf-8');
-echo $result['message'];
+header('Content-Type: application/json; charset=utf-8');
+echo wp_json_encode($result, JSON_UNESCAPED_SLASHES | JSON_PRETTY_PRINT);
 exit;

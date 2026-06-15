@@ -122,17 +122,23 @@ function rm_payment_collect_salts(string $kind): array
     return array_values(array_unique($salts));
 }
 
-function rm_payment_get_webhook_signature(): string
+function rm_payment_get_webhook_header(string $header_name): string
 {
-    if (isset($_SERVER['HTTP_HITPAY_SIGNATURE'])) {
-        return trim((string) wp_unslash($_SERVER['HTTP_HITPAY_SIGNATURE']));
+    $header_name = strtolower(trim($header_name));
+    if ($header_name === '') {
+        return '';
+    }
+
+    $server_key = 'HTTP_' . strtoupper(str_replace('-', '_', $header_name));
+    if (isset($_SERVER[$server_key])) {
+        return trim((string) wp_unslash($_SERVER[$server_key]));
     }
 
     if (function_exists('getallheaders')) {
         $headers = getallheaders();
         if (is_array($headers)) {
             foreach ($headers as $name => $value) {
-                if (strtolower((string) $name) === 'hitpay-signature') {
+                if (strtolower((string) $name) === $header_name) {
                     return trim((string) $value);
                 }
             }
@@ -142,6 +148,42 @@ function rm_payment_get_webhook_signature(): string
     return '';
 }
 
+function rm_payment_get_webhook_signature(): string
+{
+    return strtolower(trim(rm_payment_get_webhook_header('Hitpay-Signature')));
+}
+
+/**
+ * Detect common misconfiguration (webhook URL pasted where the signing secret belongs).
+ */
+function rm_payment_webhook_salt_config_hint(): string
+{
+    foreach (['live', 'test'] as $environment) {
+        $salt = rm_payment_try_resolve_webhook_endpoint_salt($environment);
+        if ($salt === null) {
+            continue;
+        }
+
+        if (preg_match('#^https?://#i', $salt) !== 0) {
+            return 'HITPAY_' . strtoupper($environment) . '_WEBHOOK_SALT looks like a URL;'
+                . ' use the Webhook Salt from HitPay Developers → Webhooks, not the endpoint URL.';
+        }
+    }
+
+    return '';
+}
+
+/**
+ * @return array{event_type: string, event_object: string}
+ */
+function rm_payment_get_webhook_event_headers(): array
+{
+    return [
+        'event_type'   => sanitize_key(rm_payment_get_webhook_header('Hitpay-Event-Type')),
+        'event_object' => sanitize_key(rm_payment_get_webhook_header('Hitpay-Event-Object')),
+    ];
+}
+
 function rm_payment_verify_webhook_signature(string $raw_payload, string $signature, string $salt): bool
 {
     if ($raw_payload === '' || $signature === '' || $salt === '') {
@@ -149,6 +191,12 @@ function rm_payment_verify_webhook_signature(string $raw_payload, string $signat
     }
 
     $computed = hash_hmac('sha256', $raw_payload, $salt);
+    $signature = strtolower(trim($signature));
+    $computed = strtolower($computed);
+
+    if (strlen($signature) !== strlen($computed)) {
+        return false;
+    }
 
     return hash_equals($computed, $signature);
 }
@@ -208,16 +256,48 @@ function rm_payment_verify_webhook_request(string $raw_payload, string $header_s
     }
 
     if ($raw_payload !== '' && $header_signature !== '') {
-        foreach (['webhook', 'api'] as $kind) {
-            foreach (rm_payment_collect_salts($kind) as $salt) {
-                if (rm_payment_verify_webhook_signature($raw_payload, $header_signature, $salt)) {
-                    return true;
-                }
+        foreach (rm_payment_collect_salts('webhook') as $salt) {
+            if (rm_payment_verify_webhook_signature($raw_payload, $header_signature, $salt)) {
+                return true;
             }
         }
     }
 
     return false;
+}
+
+/**
+ * @param array<string, mixed> $payload
+ */
+function rm_payment_is_webhook_payment_completed(array $payload): bool
+{
+    $status = isset($payload['status']) ? strtolower(sanitize_text_field((string) $payload['status'])) : '';
+
+    if (in_array($status, ['completed', 'succeeded'], true)) {
+        return true;
+    }
+
+    return rm_payment_is_completed($payload);
+}
+
+/**
+ * @param array<string, mixed> $payload
+ */
+function rm_payment_extract_webhook_payment_request_id(array $payload): string
+{
+    if (!empty($payload['payment_request_id'])) {
+        return sanitize_text_field((string) $payload['payment_request_id']);
+    }
+
+    $event_headers = rm_payment_get_webhook_event_headers();
+    $has_reference_number = isset($payload['reference_number'])
+        && trim((string) $payload['reference_number']) !== '';
+
+    if ($event_headers['event_object'] === 'payment_request' || $has_reference_number) {
+        return isset($payload['id']) ? sanitize_text_field((string) $payload['id']) : '';
+    }
+
+    return '';
 }
 
 function rm_payment_webhooks_enabled(): bool
@@ -468,11 +548,6 @@ function rm_payment_create_request(
         'send_sms'                => true,
         'redirect_url'            => $redirect_url,
     ];
-
-    $webhook_url = rm_payment_webhook_url();
-    if (is_string($webhook_url) && $webhook_url !== '') {
-        $payload['webhook'] = $webhook_url;
-    }
 
     $result = rm_payment_api_request('POST', '/payment-requests', $environment, $payload);
     if (!$result['ok'] || !is_array($result['data'])) {
@@ -857,24 +932,94 @@ function rm_payment_parse_webhook_payload(string $raw_payload = ''): array
 
 /**
  * @param array<string, mixed> $payload
- * @return array{handled: bool, message: string}
+ * @param array<string, mixed> $context
+ * @return array<string, mixed>
+ */
+function rm_payment_summarize_webhook_transaction(array $payload, array $context = []): array
+{
+    $payment_request_id = rm_payment_extract_webhook_payment_request_id($payload);
+    $parsed_reference = rm_payment_parse_reference((string) ($payload['reference_number'] ?? ''));
+    $payment = is_array($payload['payments'][0] ?? null) ? $payload['payments'][0] : [];
+
+    $transaction = [
+        'payment_request_id' => $payment_request_id,
+        'reference_number'   => sanitize_text_field((string) ($payload['reference_number'] ?? '')),
+        'status'             => sanitize_text_field((string) ($payload['status'] ?? '')),
+        'amount'             => isset($payload['amount']) ? (string) $payload['amount'] : '',
+        'currency'           => sanitize_text_field((string) ($payload['currency'] ?? '')),
+        'name'               => sanitize_text_field((string) ($payload['name'] ?? '')),
+        'email'              => sanitize_email((string) ($payload['email'] ?? '')),
+        'phone'              => sanitize_text_field((string) ($payload['phone'] ?? '')),
+        'purpose'            => sanitize_text_field((string) ($payload['purpose'] ?? '')),
+        'payment_id'         => sanitize_text_field((string) ($payment['id'] ?? '')),
+        'payment_status'     => sanitize_text_field((string) ($payment['status'] ?? '')),
+        'payment_method'     => !empty($payment['payment_type'])
+            ? rm_payment_normalize_option((string) $payment['payment_type'])
+            : 'N/A',
+        'payment_amount'     => isset($payment['amount']) ? (string) $payment['amount'] : '',
+        'fees'               => isset($payment['fees']) ? (string) $payment['fees'] : '',
+        'created_at'         => sanitize_text_field((string) ($payload['created_at'] ?? '')),
+        'updated_at'         => sanitize_text_field((string) ($payload['updated_at'] ?? '')),
+        'pending_id'         => isset($context['pending_id'])
+            ? absint($context['pending_id'])
+            : $parsed_reference['pending_id'],
+        'event_id'           => isset($context['event_id'])
+            ? absint($context['event_id'])
+            : $parsed_reference['event_id'],
+        'order_number'       => sanitize_text_field((string) ($context['order_number'] ?? '')),
+        'finalized'          => !empty($context['finalized']),
+    ];
+
+    if (!empty($context['error']) && is_string($context['error'])) {
+        $transaction['error'] = sanitize_text_field($context['error']);
+    }
+
+    return $transaction;
+}
+
+/**
+ * @param array<string, mixed> $payload
+ * @param array<string, mixed> $transaction
+ * @return array{handled: bool, message: string, transaction: array<string, mixed>}
+ */
+function rm_payment_build_webhook_response(
+    array $payload,
+    bool $handled,
+    string $message,
+    array $transaction = []
+): array {
+    return [
+        'handled'     => $handled,
+        'message'     => $message,
+        'transaction' => $transaction !== []
+            ? $transaction
+            : rm_payment_summarize_webhook_transaction($payload),
+    ];
+}
+
+/**
+ * @param array<string, mixed> $payload
+ * @return array{handled: bool, message: string, transaction: array<string, mixed>}
  */
 function rm_payment_process_webhook_payload(array $payload): array
 {
-    $status = isset($payload['status']) ? sanitize_text_field((string) $payload['status']) : '';
-    $payment_request_id = isset($payload['payment_request_id'])
-        ? sanitize_text_field((string) $payload['payment_request_id'])
-        : '';
+    $payment_request_id = rm_payment_extract_webhook_payment_request_id($payload);
 
-    if ($payment_request_id === '' && isset($payload['id'])) {
-        $payment_request_id = sanitize_text_field((string) $payload['id']);
-    }
+    if ($payment_request_id === '' || !rm_payment_is_webhook_payment_completed($payload)) {
+        $event_headers = rm_payment_get_webhook_event_headers();
+        error_log(
+            '[rm_payment] Webhook ignored.'
+            . ' event_object=' . ($event_headers['event_object'] !== '' ? $event_headers['event_object'] : 'unknown')
+            . ' event_type=' . ($event_headers['event_type'] !== '' ? $event_headers['event_type'] : 'unknown')
+            . ' status=' . sanitize_text_field((string) ($payload['status'] ?? ''))
+            . ' payment_request_id=' . ($payment_request_id !== '' ? 'yes' : 'no')
+        );
 
-    if ($status !== 'completed' || $payment_request_id === '') {
-        return [
-            'handled' => false,
-            'message' => 'Webhook received (non-completed state).',
-        ];
+        return rm_payment_build_webhook_response(
+            $payload,
+            false,
+            'Webhook received (non-completed state).'
+        );
     }
 
     $parsed_reference = rm_payment_parse_reference((string) ($payload['reference_number'] ?? ''));
@@ -885,10 +1030,16 @@ function rm_payment_process_webhook_payload(array $payload): array
     if (!$lookup['ok'] || !is_array($lookup['data'])) {
         error_log('[rm_payment] Webhook could not verify payment: ' . $payment_request_id);
 
-        return [
-            'handled' => false,
-            'message' => 'Webhook received but payment could not be verified.',
-        ];
+        return rm_payment_build_webhook_response(
+            $payload,
+            false,
+            'Webhook received but payment could not be verified.',
+            rm_payment_summarize_webhook_transaction($payload, [
+                'pending_id' => $pending_id,
+                'event_id'   => $event_id,
+                'error'      => $lookup['error'] !== '' ? $lookup['error'] : 'Could not verify payment.',
+            ])
+        );
     }
 
     if ($pending_id < 1 || $event_id < 1) {
@@ -904,10 +1055,15 @@ function rm_payment_process_webhook_payload(array $payload): array
     }
 
     if ($pending_id < 1) {
-        return [
-            'handled' => false,
-            'message' => 'Webhook received but pending id missing.',
-        ];
+        return rm_payment_build_webhook_response(
+            $payload,
+            false,
+            'Webhook received but pending id missing.',
+            rm_payment_summarize_webhook_transaction($payload, [
+                'event_id' => $event_id,
+                'error'    => 'Pending registration id could not be resolved from reference.',
+            ])
+        );
     }
 
     $result = rm_payment_handle_completed($pending_id, $payment_request_id);
@@ -916,14 +1072,28 @@ function rm_payment_process_webhook_payload(array $payload): array
             '[rm_payment] Webhook finalize failed for pending ' . $pending_id . ': ' . $result['error']
         );
 
-        return [
-            'handled' => false,
-            'message' => 'Webhook received but registration was not finalized.',
-        ];
+        return rm_payment_build_webhook_response(
+            $payload,
+            false,
+            'Webhook received but registration was not finalized.',
+            rm_payment_summarize_webhook_transaction($payload, [
+                'pending_id'   => $pending_id,
+                'event_id'     => $event_id,
+                'order_number' => $result['order_number'],
+                'error'        => $result['error'],
+            ])
+        );
     }
 
-    return [
-        'handled' => true,
-        'message' => 'Payment processed.',
-    ];
+    return rm_payment_build_webhook_response(
+        $payload,
+        true,
+        'Payment processed.',
+        rm_payment_summarize_webhook_transaction($payload, [
+            'pending_id'   => $pending_id,
+            'event_id'     => $event_id,
+            'order_number' => $result['order_number'],
+            'finalized'    => true,
+        ])
+    );
 }
