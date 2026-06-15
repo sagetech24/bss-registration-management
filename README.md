@@ -44,8 +44,14 @@ Define these in the parent `wp-config.php`. **Do not commit real values to this 
 | `BSS_API_BEARER_TOKEN` | Bearer token for the BSS REST API |
 | `HITPAY_TEST_KEY` | HitPay sandbox API key |
 | `HITPAY_LIVE_KEY` | HitPay production API key |
+| `HITPAY_TEST_SALT` | Sandbox **API-key salt** (Developers page — for `hmac` in POST body) |
+| `HITPAY_LIVE_SALT` | Production **API-key salt** (Developers page — for `hmac` in POST body) |
+| `HITPAY_TEST_WEBHOOK_SALT` | Sandbox **webhook-endpoint salt** (Developers → Webhooks → your endpoint — for `Hitpay-Signature` header) |
+| `HITPAY_LIVE_WEBHOOK_SALT` | Production **webhook-endpoint salt** (Developers → Webhooks → your endpoint — for `Hitpay-Signature` header) |
 
-HitPay keys can also be stored as WordPress options (`hitpay_test_key`, `hitpay_live_key`) or environment variables (`HITPAY_TEST_KEY`, `HITPAY_LIVE_KEY`).
+HitPay keys can also be stored as WordPress options (`hitpay_test_key`, `hitpay_live_key`) or environment variables.
+
+**Two different salts:** HitPay uses an API-key salt (signs the `hmac` field in payment-request callbacks) and a separate per-webhook salt (signs the raw JSON body in the `Hitpay-Signature` header). Use the salt that matches your webhook format — do not mix them.
 
 Payment webhooks are enabled only on production (`https://biblesociety.sg`). Other environments finalize via the payment-return redirect.
 
@@ -60,6 +66,27 @@ Base URL: `/registration-manager/`
 | `action=register&event_code=...` | Public registration form |
 
 Webhook endpoint: `/registration-manager/webhook.php` (POST, production only)
+
+### HitPay dashboard webhook payload
+
+Configure the webhook **Request data** in the HitPay dashboard to use these fields (HitPay fills the values on each payment):
+
+```json
+{
+    "payment_id": "{{payment_id}}",
+    "payment_request_id": "{{payment_request_id}}",
+    "phone": "{{phone}}",
+    "amount": "{{amount}}",
+    "currency": "{{currency}}",
+    "status": "{{status}}",
+    "reference_number": "{{reference_number}}",
+    "hmac": "{{hmac}}"
+}
+```
+
+If your dashboard does not support placeholders, use the field names exactly as shown — HitPay sends this structure automatically for payment-request webhooks.
+
+This payload uses the **`hmac` field** (API-key salt from the main Developers page). It is not the same as event webhooks that use the `Hitpay-Signature` header with a per-webhook-endpoint salt.
 
 ## Project structure
 

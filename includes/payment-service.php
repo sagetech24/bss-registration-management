@@ -46,6 +46,180 @@ function rm_payment_resolve_api_key(string $environment): string
     return trim($key);
 }
 
+/**
+ * API-key salt (Developers page) — used for legacy `hmac` in the POST body.
+ *
+ * @return string|null
+ */
+function rm_payment_try_resolve_api_salt(string $environment): ?string
+{
+    $option_key = $environment === 'live' ? 'hitpay_live_salt' : 'hitpay_test_salt';
+    $env_key = $environment === 'live' ? 'HITPAY_LIVE_SALT' : 'HITPAY_TEST_SALT';
+
+    return rm_payment_try_resolve_configured_secret($option_key, $env_key);
+}
+
+/**
+ * Per-webhook-endpoint salt (Developers → Webhooks → your endpoint) — used for `Hitpay-Signature` header.
+ *
+ * @return string|null
+ */
+function rm_payment_try_resolve_webhook_endpoint_salt(string $environment): ?string
+{
+    $option_key = $environment === 'live' ? 'hitpay_live_webhook_salt' : 'hitpay_test_webhook_salt';
+    $env_key = $environment === 'live' ? 'HITPAY_LIVE_WEBHOOK_SALT' : 'HITPAY_TEST_WEBHOOK_SALT';
+
+    return rm_payment_try_resolve_configured_secret($option_key, $env_key);
+}
+
+/**
+ * @return string|null
+ */
+function rm_payment_try_resolve_salt(string $environment): ?string
+{
+    return rm_payment_try_resolve_api_salt($environment);
+}
+
+/**
+ * @return string|null
+ */
+function rm_payment_try_resolve_configured_secret(string $option_key, string $env_key): ?string
+{
+    $secret = get_option($option_key);
+    if (!is_string($secret) || trim($secret) === '') {
+        $secret = getenv($env_key);
+    }
+    if (!is_string($secret) || trim($secret) === '') {
+        if (defined($env_key)) {
+            $secret = constant($env_key);
+        }
+    }
+
+    if (!is_string($secret) || trim($secret) === '') {
+        return null;
+    }
+
+    return trim($secret);
+}
+
+/**
+ * @return list<string>
+ */
+function rm_payment_collect_salts(string $kind): array
+{
+    $resolver = $kind === 'webhook'
+        ? 'rm_payment_try_resolve_webhook_endpoint_salt'
+        : 'rm_payment_try_resolve_api_salt';
+
+    $salts = [];
+    foreach (['live', 'test'] as $environment) {
+        $salt = $resolver($environment);
+        if ($salt !== null) {
+            $salts[] = $salt;
+        }
+    }
+
+    return array_values(array_unique($salts));
+}
+
+function rm_payment_get_webhook_signature(): string
+{
+    if (isset($_SERVER['HTTP_HITPAY_SIGNATURE'])) {
+        return trim((string) wp_unslash($_SERVER['HTTP_HITPAY_SIGNATURE']));
+    }
+
+    if (function_exists('getallheaders')) {
+        $headers = getallheaders();
+        if (is_array($headers)) {
+            foreach ($headers as $name => $value) {
+                if (strtolower((string) $name) === 'hitpay-signature') {
+                    return trim((string) $value);
+                }
+            }
+        }
+    }
+
+    return '';
+}
+
+function rm_payment_verify_webhook_signature(string $raw_payload, string $signature, string $salt): bool
+{
+    if ($raw_payload === '' || $signature === '' || $salt === '') {
+        return false;
+    }
+
+    $computed = hash_hmac('sha256', $raw_payload, $salt);
+
+    return hash_equals($computed, $signature);
+}
+
+/**
+ * Legacy HitPay webhook: sort keys (excluding hmac), concatenate key+value, HMAC-SHA256 with API-key salt.
+ *
+ * @param array<string, mixed> $payload
+ */
+function rm_payment_build_legacy_webhook_signature_string(array $payload): string
+{
+    $fields = $payload;
+    unset($fields['hmac']);
+
+    $hmac_source = [];
+    foreach ($fields as $key => $value) {
+        if (!is_scalar($value)) {
+            continue;
+        }
+
+        $hmac_source[(string) $key] = (string) $key . (string) $value;
+    }
+
+    ksort($hmac_source, SORT_STRING);
+
+    return implode('', array_values($hmac_source));
+}
+
+/**
+ * @param array<string, mixed> $payload
+ */
+function rm_payment_verify_legacy_webhook_hmac(array $payload, string $salt): bool
+{
+    $hmac = isset($payload['hmac']) ? trim((string) $payload['hmac']) : '';
+    if ($hmac === '' || $salt === '') {
+        return false;
+    }
+
+    $computed = hash_hmac('sha256', rm_payment_build_legacy_webhook_signature_string($payload), $salt);
+
+    return hash_equals($computed, $hmac);
+}
+
+/**
+ * @param array<string, mixed> $payload
+ */
+function rm_payment_verify_webhook_request(string $raw_payload, string $header_signature, array $payload = []): bool
+{
+    $payload_hmac = isset($payload['hmac']) ? trim((string) $payload['hmac']) : '';
+
+    if ($payload_hmac !== '') {
+        foreach (rm_payment_collect_salts('api') as $salt) {
+            if (rm_payment_verify_legacy_webhook_hmac($payload, $salt)) {
+                return true;
+            }
+        }
+    }
+
+    if ($raw_payload !== '' && $header_signature !== '') {
+        foreach (['webhook', 'api'] as $kind) {
+            foreach (rm_payment_collect_salts($kind) as $salt) {
+                if (rm_payment_verify_webhook_signature($raw_payload, $header_signature, $salt)) {
+                    return true;
+                }
+            }
+        }
+    }
+
+    return false;
+}
+
 function rm_payment_webhooks_enabled(): bool
 {
     $home = untrailingslashit(home_url());
@@ -111,27 +285,53 @@ function rm_payment_methods(string $environment): array
     return ['paynow_online'];
 }
 
-function rm_payment_reference_for_pending(int $pending_id): string
+function rm_payment_reference_for_pending(int $pending_id, int $event_id): string
 {
-    return 'RM-' . max(0, $pending_id);
+    return 'RM-' . max(0, $pending_id) . '-' . max(0, $event_id);
+}
+
+/**
+ * @return array{pending_id: int, event_id: int}
+ */
+function rm_payment_parse_reference(string $reference): array
+{
+    $reference = trim($reference);
+    if ($reference === '') {
+        return ['pending_id' => 0, 'event_id' => 0];
+    }
+
+    if (preg_match('/^RM-(\d+)-(\d+)$/', $reference, $matches) === 1) {
+        return [
+            'pending_id' => absint($matches[1]),
+            'event_id'   => absint($matches[2]),
+        ];
+    }
+
+    if (preg_match('/^RM-(\d+)$/', $reference, $matches) === 1) {
+        return [
+            'pending_id' => absint($matches[1]),
+            'event_id'   => 0,
+        ];
+    }
+
+    if (ctype_digit($reference)) {
+        return [
+            'pending_id' => absint($reference),
+            'event_id'   => 0,
+        ];
+    }
+
+    return ['pending_id' => 0, 'event_id' => 0];
 }
 
 function rm_payment_parse_pending_id(string $reference): int
 {
-    $reference = trim($reference);
-    if ($reference === '') {
-        return 0;
-    }
+    return rm_payment_parse_reference($reference)['pending_id'];
+}
 
-    if (preg_match('/^RM-(\d+)$/', $reference, $matches) === 1) {
-        return absint($matches[1]);
-    }
-
-    if (ctype_digit($reference)) {
-        return absint($reference);
-    }
-
-    return 0;
+function rm_payment_parse_event_id(string $reference): int
+{
+    return rm_payment_parse_reference($reference)['event_id'];
 }
 
 function rm_payment_normalize_option(string $hitpay_type): string
@@ -242,7 +442,7 @@ function rm_payment_create_request(
     );
     $title = isset($event['title']) ? sanitize_text_field((string) $event['title']) : '';
     $start_date = isset($event['startDate']) ? (string) $event['startDate'] : '';
-    $reference = rm_payment_reference_for_pending($pending_id);
+    $reference = rm_payment_reference_for_pending($pending_id, $event_id);
 
     $redirect_url = add_query_arg(
         [
@@ -509,12 +709,20 @@ function rm_payment_handle_completed(int $pending_id, string $payment_request_id
         ];
     }
 
-    $resolved_pending_id = rm_payment_parse_pending_id((string) ($hitpay_data['reference_number'] ?? ''));
-    if ($resolved_pending_id > 0 && $resolved_pending_id !== $pending_id) {
+    $parsed_reference = rm_payment_parse_reference((string) ($hitpay_data['reference_number'] ?? ''));
+    if ($parsed_reference['pending_id'] > 0 && $parsed_reference['pending_id'] !== $pending_id) {
         return [
             'ok'           => false,
             'order_number' => '',
             'error'        => 'Payment reference does not match this registration.',
+        ];
+    }
+
+    if ($parsed_reference['event_id'] > 0 && $parsed_reference['event_id'] !== $event_id) {
+        return [
+            'ok'           => false,
+            'order_number' => '',
+            'error'        => 'Payment reference does not match this event.',
         ];
     }
 
@@ -623,15 +831,20 @@ function rm_payment_initiate_checkout(
 /**
  * @return array<string, mixed>
  */
-function rm_payment_parse_webhook_payload(): array
+function rm_payment_parse_webhook_payload(string $raw_payload = ''): array
 {
-    $raw = file_get_contents('php://input');
     $data = [];
 
-    if (is_string($raw) && $raw !== '') {
-        $decoded = json_decode($raw, true);
+    if ($raw_payload !== '') {
+        $decoded = json_decode($raw_payload, true);
         if (is_array($decoded)) {
             $data = $decoded;
+        } else {
+            $parsed = [];
+            parse_str($raw_payload, $parsed);
+            if (is_array($parsed) && $parsed !== []) {
+                $data = wp_unslash($parsed);
+            }
         }
     }
 
@@ -649,10 +862,12 @@ function rm_payment_parse_webhook_payload(): array
 function rm_payment_process_webhook_payload(array $payload): array
 {
     $status = isset($payload['status']) ? sanitize_text_field((string) $payload['status']) : '';
-    $payment_request_id = isset($payload['id']) ? sanitize_text_field((string) $payload['id']) : '';
+    $payment_request_id = isset($payload['payment_request_id'])
+        ? sanitize_text_field((string) $payload['payment_request_id'])
+        : '';
 
-    if ($payment_request_id === '' && isset($payload['payment_request_id'])) {
-        $payment_request_id = sanitize_text_field((string) $payload['payment_request_id']);
+    if ($payment_request_id === '' && isset($payload['id'])) {
+        $payment_request_id = sanitize_text_field((string) $payload['id']);
     }
 
     if ($status !== 'completed' || $payment_request_id === '') {
@@ -662,7 +877,11 @@ function rm_payment_process_webhook_payload(array $payload): array
         ];
     }
 
-    $lookup = rm_payment_get_request($payment_request_id);
+    $parsed_reference = rm_payment_parse_reference((string) ($payload['reference_number'] ?? ''));
+    $pending_id = $parsed_reference['pending_id'];
+    $event_id = $parsed_reference['event_id'];
+
+    $lookup = rm_payment_get_request($payment_request_id, $event_id);
     if (!$lookup['ok'] || !is_array($lookup['data'])) {
         error_log('[rm_payment] Webhook could not verify payment: ' . $payment_request_id);
 
@@ -672,7 +891,18 @@ function rm_payment_process_webhook_payload(array $payload): array
         ];
     }
 
-    $pending_id = rm_payment_parse_pending_id((string) ($lookup['data']['reference_number'] ?? ''));
+    if ($pending_id < 1 || $event_id < 1) {
+        $lookup_reference = rm_payment_parse_reference(
+            (string) ($lookup['data']['reference_number'] ?? '')
+        );
+        if ($pending_id < 1) {
+            $pending_id = $lookup_reference['pending_id'];
+        }
+        if ($event_id < 1) {
+            $event_id = $lookup_reference['event_id'];
+        }
+    }
+
     if ($pending_id < 1) {
         return [
             'handled' => false,
