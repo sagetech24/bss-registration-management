@@ -218,10 +218,20 @@ function rm_build_dashboard_context(): array
     ];
 
     if ($view_action === 'get-event') {
-        $context = array_merge(
-            $context,
-            rm_build_registrants_context($fetch['events'], rm_get_event_code())
-        );
+        $event_code = rm_get_event_code();
+        if ($event_code === '') {
+            wp_safe_redirect(rm_page_url());
+            exit;
+        }
+
+        $registrants_context = rm_build_registrants_context($fetch['events'], $event_code);
+
+        if (!empty($registrants_context['event_not_found'])) {
+            $context['event_not_found'] = true;
+            $context['selected_event_code'] = $registrants_context['selected_event_code'];
+        } else {
+            $context = array_merge($context, $registrants_context);
+        }
     }
 
     return $context;

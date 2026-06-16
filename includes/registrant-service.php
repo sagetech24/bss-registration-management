@@ -145,6 +145,19 @@ function rm_registrants_summary(array $registrants, array $pending_registrants):
     ];
 }
 
+function rm_is_event_not_found(string $event_code, ?array $event, string $error_message): bool
+{
+    if ($event_code === '' || $event !== null) {
+        return false;
+    }
+
+    if ($error_message === '') {
+        return true;
+    }
+
+    return (bool) preg_match('/HTTP 4\d\d/', $error_message);
+}
+
 /**
  * @param array<string, array<int, array<string, mixed>>> $events_by_year
  * @return array<string, mixed>
@@ -182,9 +195,47 @@ function rm_build_registrants_context(array $events_by_year, string $requested_e
         $event_fetch = rm_fetch_event($selected_event_code);
         if ($event_fetch['error'] !== '') {
             $error_message = $event_fetch['error'];
-        } elseif (is_array($event_fetch['event'])) {
+        } elseif (is_array($event_fetch['event']) && $event_fetch['event'] !== []) {
             $selected_event = $event_fetch['event'];
         }
+    }
+
+    if (rm_is_event_not_found($selected_event_code, $selected_event, $error_message)) {
+        return [
+            'event_options'         => $event_options,
+            'selected_event_code'   => $selected_event_code,
+            'selected_event'        => null,
+            'registrants'           => [],
+            'pending_registrants'   => [],
+            'registrant_rows'       => [],
+            'registrants_summary'   => [
+                'total'         => 0,
+                'paid_count'    => 0,
+                'pending_count' => 0,
+                'total_revenue' => 0.0,
+            ],
+            'registrants_error'     => '',
+            'event_not_found'       => true,
+        ];
+    }
+
+    if ($selected_event === null) {
+        return [
+            'event_options'         => $event_options,
+            'selected_event_code'   => $selected_event_code,
+            'selected_event'        => null,
+            'registrants'           => [],
+            'pending_registrants'   => [],
+            'registrant_rows'       => [],
+            'registrants_summary'   => [
+                'total'         => 0,
+                'paid_count'    => 0,
+                'pending_count' => 0,
+                'total_revenue' => 0.0,
+            ],
+            'registrants_error'     => $error_message,
+            'event_not_found'       => false,
+        ];
     }
 
     $registrants_fetch = rm_fetch_registrants($selected_event_code);
@@ -222,5 +273,6 @@ function rm_build_registrants_context(array $events_by_year, string $requested_e
         'registrant_rows'       => $rows,
         'registrants_summary'   => rm_registrants_summary($registrants, $pending_registrants),
         'registrants_error'     => $error_message,
+        'event_not_found'       => false,
     ];
 }
