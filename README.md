@@ -62,7 +62,8 @@ Base URL: `/registration-manager/`
 | Query param | View |
 |-------------|------|
 | *(default)* | Events dashboard |
-| `action=get-event&event_code=...` | Registrants for an event |
+| `action=get-event-registrants&event_code=...&event_id=...` | Registrants for an event |
+| `action=get-event&event_code=...` | Event page (reserved) |
 | `action=register&event_code=...` | Public registration form |
 
 Webhook endpoint: `/registration-manager/webhook.php` (POST, production only)

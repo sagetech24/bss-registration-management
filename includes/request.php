@@ -101,9 +101,26 @@ function rm_get_event_code(): string
         : '';
 }
 
+function rm_get_event_id(): int
+{
+    if (!isset($_GET['event_id'])) {
+        return 0;
+    }
+
+    return absint(wp_unslash((string) $_GET['event_id']));
+}
+
 function rm_active_nav(string $view_action): string
 {
-    return $view_action === 'get-event' ? 'registrants' : 'events';
+    if ($view_action === 'get-event-registrants') {
+        return 'registrants';
+    }
+
+    if ($view_action === 'payment-transactions') {
+        return 'payment-transactions';
+    }
+
+    return 'events';
 }
 
 function rm_is_public_view(string $view_action): bool
@@ -157,4 +174,36 @@ function rm_get_registration_flash_key(): string
     }
 
     return sanitize_key(wp_unslash((string) $_GET['registered']));
+}
+
+function rm_payment_transactions_per_page(): int
+{
+    return 10;
+}
+
+function rm_get_payment_transactions_page(): int
+{
+    if (!isset($_GET['tx_page'])) {
+        return 1;
+    }
+
+    return max(1, absint(wp_unslash((string) $_GET['tx_page'])));
+}
+
+function rm_get_registrant_payment_request_id(): string
+{
+    if (!isset($_GET['payment_request_id'])) {
+        return '';
+    }
+
+    return sanitize_text_field(wp_unslash((string) $_GET['payment_request_id']));
+}
+
+function rm_get_registrant_id(): int
+{
+    if (!isset($_GET['registrant_id'])) {
+        return 0;
+    }
+
+    return absint(wp_unslash((string) $_GET['registrant_id']));
 }

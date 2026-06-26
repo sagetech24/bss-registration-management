@@ -7,7 +7,17 @@ function rm_api_bearer_token(): string
 
 function rm_api_base_url(): string
 {
-    return 'https://biblesociety.sg/wp-json/BSS/v2/query';
+    $use_local = defined('RM_USE_LOCAL_ENDPOINT') && RM_USE_LOCAL_ENDPOINT;
+
+    if ($use_local && defined('RM_ENDPOINT_LOCAL_URL')) {
+        $base = (string) RM_ENDPOINT_LOCAL_URL;
+    } elseif (defined('RM_ENDPOINT_LIVE_URL')) {
+        $base = (string) RM_ENDPOINT_LIVE_URL;
+    } else {
+        $base = 'https://biblesociety.sg/wp-json/BSS/v2';
+    }
+
+    return untrailingslashit($base) . '/query';
 }
 
 /**

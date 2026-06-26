@@ -217,14 +217,14 @@ function rm_build_dashboard_context(): array
         'error_message'        => $fetch['error'],
     ];
 
-    if ($view_action === 'get-event') {
+    if ($view_action === 'get-event-registrants') {
         $event_code = rm_get_event_code();
         if ($event_code === '') {
             wp_safe_redirect(rm_page_url());
             exit;
         }
 
-        $registrants_context = rm_build_registrants_context($fetch['events'], $event_code);
+        $registrants_context = rm_build_registrants_context($fetch['events'], $event_code, rm_get_event_id());
 
         if (!empty($registrants_context['event_not_found'])) {
             $context['event_not_found'] = true;
@@ -232,6 +232,10 @@ function rm_build_dashboard_context(): array
         } else {
             $context = array_merge($context, $registrants_context);
         }
+    }
+
+    if ($view_action === 'payment-transactions') {
+        $context = array_merge($context, rm_build_payment_transactions_shell_context());
     }
 
     return $context;

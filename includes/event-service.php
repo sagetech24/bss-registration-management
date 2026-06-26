@@ -46,6 +46,163 @@ function rm_get_event_by_id(int $event_id): ?array
 }
 
 /**
+ * @param array<string, mixed> $event
+ */
+function rm_format_event_date_display(array $event): string
+{
+    if (!empty($event['customDate'])) {
+        return trim(wp_strip_all_tags((string) $event['customDate']));
+    }
+
+    $start_ts = !empty($event['startDate']) ? strtotime((string) $event['startDate']) : false;
+    if ($start_ts === false) {
+        return '';
+    }
+
+    $parts = [wp_date(get_option('date_format'), $start_ts)];
+    $start_time = isset($event['startTime']) ? trim((string) $event['startTime']) : '';
+    $end_ts = !empty($event['endDate']) ? strtotime((string) $event['endDate']) : false;
+    $end_time = isset($event['endTime']) ? trim((string) $event['endTime']) : '';
+
+    if ($start_time !== '') {
+        $parts[] = $start_time;
+    }
+
+    if ($end_ts !== false && wp_date('Y-m-d', $end_ts) !== wp_date('Y-m-d', $start_ts)) {
+        $parts[] = '–';
+        $parts[] = wp_date(get_option('date_format'), $end_ts);
+        if ($end_time !== '') {
+            $parts[] = $end_time;
+        }
+    } elseif ($end_time !== '' && $end_time !== $start_time) {
+        $parts[] = '– ' . $end_time;
+    }
+
+    return trim(implode(' ', $parts));
+}
+
+/**
+ * Load event title and related details for display, verifying the ID exists in bss_events.
+ *
+ * @return array{
+ *     ok: bool,
+ *     exists: bool,
+ *     error: string,
+ *     event_id: int,
+ *     title: string,
+ *     program_code: string,
+ *     venue: string,
+ *     date_display: string,
+ *     active_until_display: string,
+ *     display: string
+ * }
+ */
+function rm_get_event_details(int $event_id): array
+{
+    static $cache = [];
+
+    if ($event_id < 1) {
+        return [
+            'ok'                   => false,
+            'exists'               => false,
+            'error'                => 'Invalid event ID.',
+            'event_id'             => $event_id,
+            'title'                => '',
+            'program_code'         => '',
+            'venue'                => '',
+            'date_display'         => '',
+            'active_until_display' => '',
+            'display'              => 'N/A',
+        ];
+    }
+
+    if (isset($cache[$event_id])) {
+        return $cache[$event_id];
+    }
+
+    global $wpdb;
+
+    $event = $wpdb->get_row(
+        $wpdb->prepare('SELECT * FROM `bss_events` WHERE `id` = %d LIMIT 1', $event_id),
+        ARRAY_A
+    );
+
+    if ($wpdb->last_error !== '') {
+        $result = [
+            'ok'                   => false,
+            'exists'               => false,
+            'error'                => 'Unable to load event details.',
+            'event_id'             => $event_id,
+            'title'                => '',
+            'program_code'         => '',
+            'venue'                => '',
+            'date_display'         => '',
+            'active_until_display' => '',
+            'display'              => '#' . $event_id,
+        ];
+        $cache[$event_id] = $result;
+
+        return $result;
+    }
+
+    if (!is_array($event) || $event === []) {
+        $result = [
+            'ok'                   => false,
+            'exists'               => false,
+            'error'                => 'Event not found.',
+            'event_id'             => $event_id,
+            'title'                => '',
+            'program_code'         => '',
+            'venue'                => '',
+            'date_display'         => '',
+            'active_until_display' => '',
+            'display'              => '#' . $event_id . ' (not found)',
+        ];
+        $cache[$event_id] = $result;
+
+        return $result;
+    }
+
+    $title = trim((string) ($event['title'] ?? ''));
+    if ($title === '') {
+        $title = 'Untitled event';
+    }
+
+    $program_code = trim((string) ($event['programCode'] ?? ''));
+    $venue = trim(preg_replace('/\s+/u', ' ', wp_strip_all_tags((string) ($event['venue'] ?? ''))));
+    $date_display = rm_format_event_date_display($event);
+
+    $active_until_display = '';
+    if (!empty($event['activeUntil'])) {
+        $active_until_ts = strtotime((string) $event['activeUntil']);
+        if ($active_until_ts !== false) {
+            $active_until_display = wp_date('M j, Y g:iA', $active_until_ts);
+        }
+    }
+
+    $display_parts = ['#' . $event_id, $title];
+    if ($program_code !== '') {
+        $display_parts[] = '(' . $program_code . ')';
+    }
+
+    $result = [
+        'ok'                   => true,
+        'exists'               => true,
+        'error'                => '',
+        'event_id'             => $event_id,
+        'title'                => $title,
+        'program_code'         => $program_code,
+        'venue'                => $venue,
+        'date_display'         => $date_display,
+        'active_until_display' => $active_until_display,
+        'display'              => implode(' — ', $display_parts),
+    ];
+    $cache[$event_id] = $result;
+
+    return $result;
+}
+
+/**
  * Registration gate: event must exist, activeUntil must be valid, and the event must not have passed.
  *
  * @return array{ok: bool, error: string, event: array<string, mixed>|null}
