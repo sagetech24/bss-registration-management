@@ -417,6 +417,46 @@ function rm_hitpay_fetch_charges_for_event(int $event_id): array
 }
 
 /**
+ * @param list<string> $payment_request_ids
+ * @return array<string, array<string, mixed>>
+ */
+function rm_hitpay_map_charges_by_payment_request(int $event_id, array $payment_request_ids): array
+{
+    $lookup = [];
+    foreach ($payment_request_ids as $payment_request_id) {
+        $payment_request_id = trim((string) $payment_request_id);
+        if ($payment_request_id !== '') {
+            $lookup[$payment_request_id] = true;
+        }
+    }
+
+    if ($event_id < 1 || $lookup === []) {
+        return [];
+    }
+
+    $charges_result = rm_hitpay_fetch_charges_for_event($event_id);
+    if (!$charges_result['ok']) {
+        return [];
+    }
+
+    $map = [];
+    foreach ($charges_result['data'] as $charge) {
+        if (!is_array($charge)) {
+            continue;
+        }
+
+        $payment_request_id = trim((string) ($charge['payment_request_id'] ?? ''));
+        if ($payment_request_id === '' || !isset($lookup[$payment_request_id]) || isset($map[$payment_request_id])) {
+            continue;
+        }
+
+        $map[$payment_request_id] = rm_hitpay_summarize_charge($charge);
+    }
+
+    return $map;
+}
+
+/**
  * @param array<string, mixed> $payment_method
  */
 function rm_hitpay_payment_method_logo_lg(array $payment_method): string

@@ -128,6 +128,23 @@ function rm_present_registrant_row(array $registrant, bool $is_pending = false):
     }
     $payment_method_logo = trim((string) ($hitpay['payment_method_logo'] ?? ''));
 
+    $charge_hitpay = isset($registrant['_charge_hitpay']) && is_array($registrant['_charge_hitpay'])
+        ? $registrant['_charge_hitpay']
+        : [];
+    $charge_payment_method = trim((string) ($charge_hitpay['payment_method'] ?? ''));
+    $charge_payment_method_logo = trim((string) ($charge_hitpay['payment_method_logo'] ?? ''));
+
+    $charge_amount_raw = !empty($charge_hitpay['amount']) && is_numeric($charge_hitpay['amount'])
+        ? (float) $charge_hitpay['amount']
+        : null;
+    $charge_currency = strtoupper(trim((string) ($charge_hitpay['currency'] ?? '')));
+    $charge_amount_display = $amount_display;
+    if ($charge_amount_raw !== null) {
+        $charge_amount_display = $charge_currency !== ''
+            ? $charge_currency . ' ' . number_format_i18n($charge_amount_raw, 2)
+            : '$' . number_format_i18n($charge_amount_raw, 2);
+    }
+
     return [
         'registrant_id'      => isset($registrant['id']) ? (int) $registrant['id'] : 0,
         'full_name'          => $full_name,
@@ -136,6 +153,10 @@ function rm_present_registrant_row(array $registrant, bool $is_pending = false):
         'order_number'       => $order_number,
         'payment_method'     => $payment_method,
         'payment_method_logo' => $payment_method_logo,
+        'charge_payment_method' => $charge_payment_method !== '' ? $charge_payment_method : 'N/A',
+        'charge_payment_method_logo' => $charge_payment_method_logo,
+        'charge_amount_display' => $charge_amount_display,
+        'charge_currency'    => $charge_currency !== '' ? $charge_currency : 'N/A',
         'payment_request_id' => $payment_request_id,
         'has_payment'        => $payment_request_id !== '',
         'payment_status'     => $payment_status,
@@ -692,10 +713,34 @@ function rm_build_event_registrants_data(): array
     $rows = [];
 
     if ($db_fetch['error'] === '') {
+        $payment_request_ids = [];
         foreach ($db_fetch['registrants'] as $registrant) {
-            if (is_array($registrant)) {
-                $rows[] = rm_present_registrant_row($registrant, false);
+            if (!is_array($registrant)) {
+                continue;
             }
+
+            $payment_request_id = trim((string) ($registrant['payment'] ?? ''));
+            if ($payment_request_id !== '') {
+                $payment_request_ids[] = $payment_request_id;
+            }
+        }
+
+        $charges_by_payment_request = rm_hitpay_map_charges_by_payment_request(
+            $event_id,
+            $payment_request_ids
+        );
+
+        foreach ($db_fetch['registrants'] as $registrant) {
+            if (!is_array($registrant)) {
+                continue;
+            }
+
+            $payment_request_id = trim((string) ($registrant['payment'] ?? ''));
+            if ($payment_request_id !== '' && isset($charges_by_payment_request[$payment_request_id])) {
+                $registrant['_charge_hitpay'] = $charges_by_payment_request[$payment_request_id];
+            }
+
+            $rows[] = rm_present_registrant_row($registrant, false);
         }
     }
 

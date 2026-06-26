@@ -44,6 +44,9 @@ $aside_price = is_array($selected_event) && (float) ($selected_event['price'] ??
     ? '$' . number_format_i18n((float) $selected_event['price'], 2)
     : 'FREE';
 $event_is_free = is_array($selected_event) && rm_event_is_free($selected_event);
+$registration_form_url = $selected_event_code !== ''
+    ? rm_registration_url(['event_code' => $selected_event_code])
+    : '';
 $registrants_config = [
     'apiUrl'             => esc_url_raw($registrants_api_url),
     'paymentDetailsUrl'  => esc_url_raw($payment_details_api_url),
@@ -324,6 +327,22 @@ document.addEventListener('alpine:init', () => {
                                 </tr>
                             </tbody>
                         </table>
+                        <!-- add here the event link and the event registration link -->
+                        <?php if ($registration_form_url !== '') : ?>
+                            <div class="mt-4">
+                                <a
+                                    href="<?php echo esc_url($registration_form_url); ?>"
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    class="inline-flex w-full items-center justify-center gap-2 rounded-full bg-indigo-700 p-3 text-sm font-medium text-white hover:bg-indigo-800 transition"
+                                >
+                                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="size-4">
+                                        <path stroke-linecap="round" stroke-linejoin="round" d="M12 6.042A8.967 8.967 0 0 0 6 3.75c-1.052 0-2.062.18-3 .512v14.25A8.987 8.987 0 0 1 6 18c2.305 0 4.408.867 6 2.292m0-14.25a8.966 8.966 0 0 1 6-2.292c1.052 0 2.062.18 3 .512v14.25A8.987 8.987 0 0 0 18 18a8.967 8.967 0 0 0-6 2.292m0-14.25v14.25" />
+                                    </svg>
+                                    View Registration Form
+                                </a>
+                            </div>
+                        <?php endif; ?>
                     </div>
                 </div>
             </div>
@@ -412,15 +431,14 @@ document.addEventListener('alpine:init', () => {
                                     <td x-show="!eventIsFree" class="px-4 py-3 text-xs text-slate-700">
                                         <div class="flex items-center gap-2">
                                             <img
-                                                x-show="row.payment_method_logo"
-                                                :src="row.payment_method_logo"
-                                                :alt="row.payment_method || 'Payment method'"
-                                                class="h-6 w-auto object-contain shrink-0"
+                                                x-show="row.charge_payment_method_logo"
+                                                :src="row.charge_payment_method_logo"
+                                                :alt="row.charge_payment_method || 'Payment method'"
+                                                class="h-6 w-16 object-cover"
                                             >
-                                            <p class="font-medium text-slate-800" x-text="row.payment_method || 'N/A'"></p>
                                         </div>
                                         <p
-                                            class="mt-0.5 text-[11px] truncate max-w-[10rem] font-mono text-slate-500"
+                                            class="mt-0.5 text-[10px] truncate max-w-[10rem] font-mono text-slate-500"
                                             x-show="row.payment_request_id"
                                             x-text="row.payment_request_id || 'N/A'"
                                         ></p>
@@ -432,7 +450,7 @@ document.addEventListener('alpine:init', () => {
                                             x-text="row.payment_status"
                                         ></span>
                                     </td>
-                                    <td x-show="!eventIsFree" class="whitespace-nowrap px-4 py-3 text-xs text-slate-700" x-text="row.amount_display"></td>
+                                    <td x-show="!eventIsFree" class="whitespace-nowrap px-4 py-3 text-xs text-slate-700" x-text="row.charge_amount_display"></td>
                                     <td class="whitespace-nowrap px-4 py-3 text-xs">
                                         <span
                                             class="inline-flex rounded-full px-2.5 py-1 text-xs font-semibold"
@@ -453,7 +471,7 @@ document.addEventListener('alpine:init', () => {
                                         <button
                                             x-show="!eventIsFree"
                                             type="button"
-                                            class="rounded-lg border px-3 py-1.5 text-xs font-medium transition"
+                                            class="rounded-full border px-2 py-1 text-[11px] transition"
                                             :class="row.has_payment
                                                 ? 'border-indigo-200 bg-indigo-50 text-indigo-700 hover:bg-indigo-100'
                                                 : 'border-slate-200 bg-slate-50 text-slate-400 cursor-not-allowed'"
@@ -489,7 +507,7 @@ document.addEventListener('alpine:init', () => {
                     <div class="flex items-start justify-between gap-4 border-b border-slate-200 px-5 py-4">
                         <div>
                             <h3 id="registrant-payment-modal-title" class="text-lg font-semibold text-slate-900">Payment Details</h3>
-                            <p class="mt-1 text-xs font-mono text-slate-500" x-text="paymentDetails?.charge?.charge_id ? 'Charge ID: '+paymentDetails?.charge?.charge_id:'N/A'"></p>
+                            <p class="mt-1 font-mono text-xs text-slate-500" x-text="paymentDetails?.payment?.payment_request_id ? 'Request ID: '+paymentDetails?.payment?.payment_request_id : ''"></p>
                         </div>
                         <button
                             type="button"
@@ -520,8 +538,40 @@ document.addEventListener('alpine:init', () => {
                             class="space-y-6"
                         >
                             <div>
-                                <h4 class="text-sm font-semibold text-slate-900">Charge Data</h4>
-                                <p class="mt-1 text-xs text-slate-500">HitPay charge linked to this payment request.</p>
+                                <p class="mt-1 text-sm text-slate-600">Payment request details generated by hitpay after submitting the registration form.</p>
+
+                                <dl class="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-6 text-sm">
+                                    <div>
+                                        <dt class="text-xs font-medium uppercase tracking-wide text-slate-500">Customer</dt>
+                                        <dd class="mt-1 font-medium text-slate-900 capitalize" x-text="paymentDetails?.payment?.customer_name || 'N/A'"></dd>
+                                    </div>
+                                    <div>
+                                        <dt class="text-xs font-medium uppercase tracking-wide text-slate-500">Email</dt>
+                                        <dd class="mt-1 text-slate-900 break-all" x-text="paymentDetails?.payment?.customer_email || 'N/A'"></dd>
+                                    </div>
+                                    <div class="sm:col-span-2 grid grid-cols-1 sm:grid-cols-3 gap-x-6 gap-y-4 text-sm items-center">
+                                        <div>
+                                            <dt class="text-xs font-medium uppercase tracking-wide text-slate-500">Reference</dt>
+                                            <dd class="mt-1 font-mono text-xs text-slate-900 break-all" x-text="paymentDetails?.payment?.reference_number || 'N/A'"></dd>
+                                        </div>
+                                        <div>
+                                            <dt class="text-xs font-medium uppercase tracking-wide text-slate-500">Amount</dt>
+                                            <dd class="mt-1 text-slate-900" x-text="paymentDetails?.payment?.amount_display || 'N/A'"></dd>
+                                        </div>
+                                        <div>
+                                            <dt class="text-xs font-medium uppercase tracking-wide text-slate-500">Status</dt>
+                                            <dd class="mt-1 text-slate-900 bg-green-100 border border-green-400 text-green-800 rounded-full inline-block px-2.5 py-1 text-xs" x-text="paymentDetails?.payment?.status || 'N/A'"></dd>
+                                        </div>
+                                    </div>
+                                    <div class="sm:col-span-2">
+                                        <dt class="text-xs font-medium uppercase tracking-wide text-slate-500">Purpose</dt>
+                                        <dd class="mt-1 text-slate-900" x-text="paymentDetails?.payment?.purpose || 'N/A'"></dd>
+                                    </div>
+                                </dl>
+                            </div>
+                            <div class="border-t border-slate-200 pt-6">
+                                <h4 class="text-sm font-semibold text-slate-900">Payment Charge Details</h4>
+                                <p class="mt-1 text-sm text-slate-600">Payment charge details made through hitpay.</p>
 
                                 <div
                                     x-show="paymentDetails?.charge_error"
@@ -533,11 +583,11 @@ document.addEventListener('alpine:init', () => {
                                 <dl
                                     x-show="paymentDetails?.charge"
                                     x-cloak
-                                    class="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-4 text-sm"
+                                    class="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-6 text-sm"
                                 >
                                     <div>
-                                        <dt class="text-xs font-medium uppercase tracking-wide text-slate-500">Status</dt>
-                                        <dd class="mt-1 text-slate-900 rounded-full inline-block px-2.5 py-1 text-xs font-semibold bg-green-100 border border-green-400 text-green-800" x-text="paymentDetails?.charge?.status || 'N/A'"></dd>
+                                        <dt class="text-xs font-medium uppercase tracking-wide text-slate-500">Charge ID</dt>
+                                        <dd class="mt-1 font-mono text-[11px] text-slate-900 break-all inline-block border border-amber-100 bg-amber-50 rounded-lg px-2 py-1" x-text="paymentDetails?.charge?.charge_id || 'N/A'"></dd>
                                     </div>
                                     <div>
                                         <dt class="text-xs font-medium uppercase tracking-wide text-slate-500">Customer</dt>
@@ -551,83 +601,43 @@ document.addEventListener('alpine:init', () => {
                                         <dt class="text-xs font-medium uppercase tracking-wide text-slate-500">Phone</dt>
                                         <dd class="mt-1 text-slate-900" x-text="paymentDetails?.charge?.customer_phone || 'N/A'"></dd>
                                     </div>
-                                    <div>
-                                        <dt class="text-xs font-medium uppercase tracking-wide text-slate-500">Reference</dt>
-                                        <dd class="mt-1 font-mono text-xs text-slate-900 break-all" x-text="paymentDetails?.charge?.reference_number || 'N/A'"></dd>
+                                    <div class="sm:col-span-2 grid grid-cols-1 sm:grid-cols-3 gap-x-6 gap-y-4 text-sm items-center">
+                                        <div>
+                                            <dt class="text-xs font-medium uppercase tracking-wide text-slate-500">Reference</dt>
+                                            <dd class="mt-1 font-mono text-xs text-slate-900 break-all" x-text="paymentDetails?.charge?.reference_number || 'N/A'"></dd>
+                                        </div>
+                                        <div>
+                                            <dt class="text-xs font-medium uppercase tracking-wide text-slate-500">Amount</dt>
+                                            <dd class="mt-1 text-slate-900" x-text="paymentDetails?.charge?.amount_display || 'N/A'"></dd>
+                                        </div>
+                                        <div>
+                                            <dt class="text-xs font-medium uppercase tracking-wide text-slate-500">Status</dt>
+                                            <dd class="mt-1 text-slate-900 rounded-full inline-block px-2.5 py-1 text-xs font-semibold bg-green-100 border border-green-400 text-green-800" x-text="paymentDetails?.charge?.status || 'N/A'"></dd>
+                                        </div>
                                     </div>
-                                    <div>
-                                        <dt class="text-xs font-medium uppercase tracking-wide text-slate-500">Order Reference</dt>
-                                        <dd class="mt-1 font-mono text-xs text-slate-900 break-all" x-text="paymentDetails?.charge?.order_reference_number || 'N/A'"></dd>
-                                    </div>
-                                    <div>
-                                        <dt class="text-xs font-medium uppercase tracking-wide text-slate-500">Amount</dt>
-                                        <dd class="mt-1 text-slate-900" x-text="paymentDetails?.charge?.amount_display || 'N/A'"></dd>
-                                    </div>
-                                    <div>
-                                        <dt class="text-xs font-medium uppercase tracking-wide text-slate-500">Payment Method</dt>
-                                        <dd class="mt-1">
-                                            <div class="flex items-center gap-2 text-slate-900">
-                                                <img
-                                                    x-show="paymentDetails?.charge?.payment_method_logo"
-                                                    :src="paymentDetails?.charge?.payment_method_logo"
-                                                    :alt="paymentDetails?.charge?.payment_method || 'Payment method'"
-                                                    class="h-10 w-auto object-contain shrink-0"
-                                                >
-                                                <span x-text="paymentDetails?.charge?.payment_method || 'N/A'"></span>
-                                            </div>
-                                        </dd>
-                                    </div>
-                                    <div>
-                                        <dt class="text-xs font-medium uppercase tracking-wide text-slate-500">Paid</dt>
-                                        <dd class="mt-1 text-slate-900" x-text="paymentDetails?.charge?.paid_display || 'N/A'"></dd>
-                                    </div>
-                                    <div>
-                                        <dt class="text-xs font-medium uppercase tracking-wide text-slate-500">Created</dt>
-                                        <dd class="mt-1 text-slate-900" x-text="paymentDetails?.charge?.created_display || 'N/A'"></dd>
-                                    </div>
-                                </dl>
-                            </div>
 
-                            <div class="border-t border-slate-200 pt-6">
-                                <h4 class="text-sm font-semibold text-slate-900">Payment Request Details</h4>
-                                <p class="mt-1 text-xs text-slate-500">HitPay payment request record for this registration.</p>
-
-                                <dl class="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-4 text-sm">
-                                    <div>
-                                        <dt class="text-xs font-medium uppercase tracking-wide text-slate-500">Payment Request ID</dt>
-                                        <dd class="mt-1 font-mono text-xs text-slate-900 break-all" x-text="paymentDetails?.payment?.payment_request_id || 'N/A'"></dd>
-                                    </div>
-                                    <div>
-                                        <dt class="text-xs font-medium uppercase tracking-wide text-slate-500">Status</dt>
-                                        <dd class="mt-1 text-slate-900" x-text="paymentDetails?.payment?.status || 'N/A'"></dd>
-                                    </div>
-                                    <div>
-                                        <dt class="text-xs font-medium uppercase tracking-wide text-slate-500">Customer</dt>
-                                        <dd class="mt-1 font-medium text-slate-900 capitalize" x-text="paymentDetails?.payment?.customer_name || 'N/A'"></dd>
-                                    </div>
-                                    <div>
-                                        <dt class="text-xs font-medium uppercase tracking-wide text-slate-500">Email</dt>
-                                        <dd class="mt-1 text-slate-900 break-all" x-text="paymentDetails?.payment?.customer_email || 'N/A'"></dd>
-                                    </div>
-                                    <div>
-                                        <dt class="text-xs font-medium uppercase tracking-wide text-slate-500">Reference</dt>
-                                        <dd class="mt-1 font-mono text-xs text-slate-900 break-all" x-text="paymentDetails?.payment?.reference_number || 'N/A'"></dd>
-                                    </div>
-                                    <div>
-                                        <dt class="text-xs font-medium uppercase tracking-wide text-slate-500">Amount</dt>
-                                        <dd class="mt-1 text-slate-900" x-text="paymentDetails?.payment?.amount_display || 'N/A'"></dd>
-                                    </div>
-                                    <div>
-                                        <dt class="text-xs font-medium uppercase tracking-wide text-slate-500">Paid</dt>
-                                        <dd class="mt-1 text-slate-900" x-text="paymentDetails?.payment?.paid_display || 'N/A'"></dd>
-                                    </div>
-                                    <div>
-                                        <dt class="text-xs font-medium uppercase tracking-wide text-slate-500">Created</dt>
-                                        <dd class="mt-1 text-slate-900" x-text="paymentDetails?.payment?.created_display || 'N/A'"></dd>
-                                    </div>
-                                    <div class="sm:col-span-2">
-                                        <dt class="text-xs font-medium uppercase tracking-wide text-slate-500">Purpose</dt>
-                                        <dd class="mt-1 text-slate-900" x-text="paymentDetails?.payment?.purpose || 'N/A'"></dd>
+                                    <div class="sm:col-span-2 grid grid-cols-1 sm:grid-cols-3 gap-x-6 gap-y-4 text-sm items-center">
+                                        <div>
+                                            <dt class="text-xs font-medium uppercase tracking-wide text-slate-500">Payment Method</dt>
+                                            <dd class="mt-1">
+                                                <div class="flex items-center gap-2 text-slate-900">
+                                                    <img
+                                                        x-show="paymentDetails?.charge?.payment_method_logo"
+                                                        :src="paymentDetails?.charge?.payment_method_logo"
+                                                        :alt="paymentDetails?.charge?.payment_method || 'Payment method'"
+                                                        class="h-6 w-16 object-cover"
+                                                    >
+                                                </div>
+                                            </dd>
+                                        </div>
+                                        <div>
+                                            <dt class="text-xs font-medium uppercase tracking-wide text-slate-500">Paid</dt>
+                                            <dd class="mt-1 text-slate-900" x-text="paymentDetails?.charge?.paid_display || 'N/A'"></dd>
+                                        </div>
+                                        <div>
+                                            <dt class="text-xs font-medium uppercase tracking-wide text-slate-500">Created</dt>
+                                            <dd class="mt-1 text-slate-900" x-text="paymentDetails?.charge?.created_display || 'N/A'"></dd>
+                                        </div>
                                     </div>
                                 </dl>
                             </div>
