@@ -491,7 +491,7 @@ document.addEventListener('alpine:init', () => {
             <div
                 x-show="modalOpen"
                 x-transition.opacity
-                class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50"
+                class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 top-[-25px]"
                 style="display: none;"
                 @click.self="closeModal()"
                 role="dialog"
@@ -659,7 +659,7 @@ document.addEventListener('alpine:init', () => {
             <div
                 x-show="profileModalOpen"
                 x-transition.opacity
-                class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50"
+                class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 top-[-25px]"
                 style="display: none;"
                 @click.self="closeProfileModal()"
                 role="dialog"

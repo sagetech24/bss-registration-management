@@ -2,7 +2,8 @@
 
 /**
  * HitPay payment integration for registration-manager.
- * Default environment is sandbox (test). Live switch: apply_filters('rm_payment_environment', 'test', $event_id).
+ * Default: live on production (biblesociety.sg), sandbox elsewhere.
+ * Override: apply_filters('rm_payment_environment', $default, $event_id).
  */
 
 /**
@@ -10,9 +11,22 @@
  */
 function rm_payment_environment(int $event_id = 0): string
 {
-    $environment = apply_filters('rm_payment_environment', 'test', $event_id);
+    $default = rm_payment_is_production_site() ? 'live' : 'test';
+    $environment = apply_filters('rm_payment_environment', $default, $event_id);
 
     return $environment === 'live' ? 'live' : 'test';
+}
+
+/**
+ * @param array<string, mixed>|null $data
+ */
+function rm_payment_response_is_model_not_found(?array $data, int $status_code): bool
+{
+    if ($status_code !== 404 || !is_array($data)) {
+        return false;
+    }
+
+    return isset($data['error_code']) && $data['error_code'] === 'model_not_found';
 }
 
 function rm_payment_api_base(string $environment): string
@@ -300,22 +314,27 @@ function rm_payment_extract_webhook_payment_request_id(array $payload): string
     return '';
 }
 
-function rm_payment_webhooks_enabled(): bool
+function rm_payment_is_production_site(): bool
 {
     $home = untrailingslashit(home_url());
-    $production = 'https://biblesociety.sg';
+    $home_host = wp_parse_url($home, PHP_URL_HOST);
 
-    if ($home === $production) {
-        return true;
+    if (!is_string($home_host) || $home_host === '') {
+        return false;
     }
 
-    $home_host = wp_parse_url($home, PHP_URL_HOST);
-    $production_host = wp_parse_url($production, PHP_URL_HOST);
+    if (wp_parse_url($home, PHP_URL_SCHEME) !== 'https') {
+        return false;
+    }
 
-    return is_string($home_host)
-        && is_string($production_host)
-        && strtolower($home_host) === strtolower($production_host)
-        && wp_parse_url($home, PHP_URL_SCHEME) === 'https';
+    $host = strtolower($home_host);
+
+    return $host === 'biblesociety.sg' || $host === 'www.biblesociety.sg';
+}
+
+function rm_payment_webhooks_enabled(): bool
+{
+    return rm_payment_is_production_site();
 }
 
 /**
@@ -599,6 +618,23 @@ function rm_payment_get_request(string $payment_request_id, int $event_id = 0): 
         '/payment-requests/' . rawurlencode($payment_request_id),
         $environment
     );
+
+    $allow_fallback = apply_filters('rm_payment_allow_environment_fallback', true, $event_id, $environment);
+    if (
+        !$result['ok']
+        && $allow_fallback
+        && rm_payment_response_is_model_not_found($result['data'], $result['status_code'])
+    ) {
+        $alternate = $environment === 'live' ? 'test' : 'live';
+        $retry = rm_payment_api_request(
+            'GET',
+            '/payment-requests/' . rawurlencode($payment_request_id),
+            $alternate
+        );
+        if ($retry['ok']) {
+            $result = $retry;
+        }
+    }
 
     return [
         'ok'    => $result['ok'],
