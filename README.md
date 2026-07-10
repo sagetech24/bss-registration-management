@@ -14,6 +14,7 @@ Event registration and payment module for Bible Society Singapore (BSS). Runs as
 - PHP 8.x
 - WordPress (parent BSS installation)
 - MySQL tables: `bss_events`, `bss_registrant`, `bss_registrant_pendings`
+- v2 tables (auto-installed on bootstrap): `event_registration`, `event_registrant`, `event_registration_pendings`, `event_registrant_pendings`
 - BSS REST API access
 
 ## Installation
@@ -22,6 +23,13 @@ Event registration and payment module for Bible Society Singapore (BSS). Runs as
 2. Ensure the parent `wp-load.php` is one level up (see `bootstrap.php`).
 3. Add the required constants to the parent `wp-config.php` (see below).
 4. Visit `/registration-manager/` on the site.
+5. v2 tables are created automatically on first load via `rm_install_event_registration_tables()`. To run manually:
+
+```bash
+php -r "require 'registration-manager/bootstrap.php'; print_r(rm_install_event_registration_tables());"
+```
+
+Or apply `migrations/001_event_registration_tables.sql` directly in MySQL.
 
 ```
 wordpress-root/
@@ -66,6 +74,8 @@ Base URL: `/registration-manager/`
 | `action=get-event&event_code=...` | Event page (reserved) |
 | `action=register&event_code=...` | Public registration form |
 
+Legacy group redirect entry: `/registration-manager/redirect.php?e={event_id}` (for v2 group events)
+
 Webhook endpoint: `/registration-manager/webhook.php` (POST, production only)
 
 ### HitPay dashboard webhook payload
@@ -89,10 +99,63 @@ If your dashboard does not support placeholders, use the field names exactly as 
 
 This payload uses the **`hmac` field** (API-key salt from the main Developers page). It is not the same as event webhooks that use the `Hitpay-Signature` header with a per-webhook-endpoint salt.
 
+## v2 registration (event_registration / event_registrant)
+
+New events opt in via `bss_events.settings.registration` JSON. Legacy events without this block continue using `bss_registrant`.
+
+### Enabling v2 for an event
+
+Set `settings.registration.version = 2` or include `settings.registration.mode`. Example:
+
+```json
+{
+  "registration": {
+    "version": 2,
+    "mode": "individual",
+    "form": { "preset": "full", "fields": [] },
+    "group": { "min": 1, "max": 1 },
+    "pricing": { "model": "flat" }
+  }
+}
+```
+
+### Modes
+
+| Mode | Key | Description |
+|------|-----|-------------|
+| Individual | `individual` | Single attendee, one checkout |
+| Group flat | `group_flat` | One package price split across N members |
+| Per-head tiered | `group_per_head` | `pricing.slots` with per-slot discounts |
+
+### Form presets
+
+`minimal`, `standard`, `full` — expanded server-side into `form.fields`. Custom fields use `source: "custom"` and are stored in `custom_responses` JSON.
+
+### Coexistence
+
+- **No migration** of historical `bss_registrant` rows
+- Dashboard dual-reads v2 tables for v2 events, legacy table for older events
+- Payment flow reuses HitPay; pending rows live in `event_registration_pendings`
+
+### Legacy group URL redirect
+
+For v2 group events, redirect legacy theme URLs to registration-manager:
+
+1. **Automatic** (when WordPress theme loads): `rm_maybe_redirect_legacy_registration()` hooks `template_redirect` via bootstrap
+2. **Manual**: point legacy URLs to `/registration-manager/redirect.php?e={event_id}`
+3. **Theme change** (outside this module): replace legacy group template redirect with `rm_registration_url($program_code)`
+
 ## Project structure
 
 ```
 includes/
+  schema-install.php           v2 table DDL installer
+  registration-config-service.php  Parse settings.registration
+  form-schema-service.php      Dynamic form schema + validation
+  pricing-service.php          Server-side pricing (incl. early bird)
+  event-registration-service.php   v2 header pending/confirmed flow
+  event-registrant-service.php     v2 line items + dashboard normalize
+  legacy-redirect.php          Legacy group URL → registration-manager
   api-client.php          BSS REST API client
   auth.php                WordPress login guard
   controller.php          Request context builder
@@ -106,7 +169,12 @@ includes/
 views/
   events.php              Event list dashboard
   registrants.php         Registrant list
-  register.php            Public registration form
+  register.php            Public registration form (schema-driven for v2)
+  partials/
+    form-field.php        Single dynamic field renderer
+    dynamic-form.php      Schema field loop
+    register-wizard.php   Alpine 3-step group wizard
+    register-legacy-fields.php  Hardcoded fields for legacy events
   layout.php              Staff layout (Tailwind + Alpine.js)
   layout-public.php       Public layout
 ```

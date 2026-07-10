@@ -63,6 +63,16 @@ function rm_build_register_context(): array
 
     $context['event'] = $event_fetch['event'];
     $context['event_present'] = rm_present_registration_event($event_fetch['event']);
+    $context['uses_v2'] = rm_event_uses_v2_registration($event_fetch['event']);
+    $context['registration_config'] = rm_parse_registration_config($event_fetch['event']);
+    $context['form_schema'] = rm_parse_form_schema($event_fetch['event']);
+    $context['is_group_mode'] = rm_registration_is_group_mode($event_fetch['event']);
+    $context['group_limits'] = rm_registration_group_limits($event_fetch['event']);
+    $context['pricing_preview'] = rm_present_registration_pricing(
+        $event_fetch['event'],
+        rm_calculate_registration_pricing($event_fetch['event'], [[]])
+    );
+    $context['members_input'] = [];
 
     if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
         $flash = rm_consume_registration_success_flash(rm_get_registration_flash_key());
@@ -86,7 +96,18 @@ function rm_build_register_context(): array
         return $context;
     }
 
-    $form_errors = rm_validate_registration_input($form_input);
+    $form_errors = [];
+    if ($context['uses_v2']) {
+        $members_post = rm_parse_members_from_post();
+        if ($members_post !== []) {
+            $context['members_input'] = $members_post;
+        } elseif (!$context['is_group_mode']) {
+            $context['members_input'] = [rm_form_responses_from_post($context['form_schema'])];
+        }
+    } else {
+        $form_errors = rm_validate_registration_input($form_input);
+    }
+
     if ($form_errors !== []) {
         $context['form_errors'] = $form_errors;
 
@@ -96,15 +117,26 @@ function rm_build_register_context(): array
     $result = rm_submit_registration($event_fetch['event'], $form_input);
     if (!$result['ok']) {
         $context['error_message'] = $result['error'];
+        if (!empty($result['form_errors']) && is_array($result['form_errors'])) {
+            $context['form_errors'] = $result['form_errors'];
+        }
 
         return $context;
+    }
+
+    $checkout_registrant = $form_input;
+    if ($context['uses_v2'] && $result['pending_id'] > 0) {
+        $pending_row = rm_payment_load_pending($result['pending_id']);
+        if (is_array($pending_row) && !empty($pending_row['_primary'])) {
+            $checkout_registrant = rm_v2_registrant_for_payment($pending_row['_primary']);
+        }
     }
 
     if ($result['status'] === 'pending_payment' && $result['pending_id'] > 0) {
         $checkout = rm_payment_initiate_checkout(
             $result['pending_id'],
             $event_fetch['event'],
-            $form_input,
+            $checkout_registrant,
             $event_code
         );
 

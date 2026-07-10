@@ -120,7 +120,23 @@ function rm_registration_order_number_exists(string $order_number, int $event_id
         )
     );
 
-    return $existing !== null;
+    if ($existing !== null) {
+        return true;
+    }
+
+    if (rm_event_registration_tables_exist()) {
+        $v2_existing = $wpdb->get_var(
+            $wpdb->prepare(
+                'SELECT 1 FROM `event_registrant` WHERE `order_number` = %s AND `event_id` = %d LIMIT 1',
+                $order_number,
+                $event_id
+            )
+        );
+
+        return $v2_existing !== null;
+    }
+
+    return false;
 }
 
 /**
@@ -256,6 +272,19 @@ function rm_build_registration_row(array $input, int $event_id, string $order_nu
  */
 function rm_submit_registration(array $event, array $input): array
 {
+    if (rm_event_uses_v2_registration($event)) {
+        $v2_result = rm_submit_v2_registration($event);
+
+        return [
+            'ok'           => $v2_result['ok'],
+            'order_number' => $v2_result['order_number'],
+            'error'        => $v2_result['error'],
+            'status'       => $v2_result['status'],
+            'pending_id'   => $v2_result['pending_id'],
+            'form_errors'  => $v2_result['form_errors'] ?? [],
+        ];
+    }
+
     global $wpdb;
 
     $event_id = isset($event['id']) ? absint($event['id']) : 0;
@@ -346,6 +375,10 @@ function rm_submit_registration(array $event, array $input): array
  */
 function rm_finalize_paid_registration(int $pending_id, string $payment_request_id, string $payment_option = 'N/A'): array
 {
+    if (rm_event_registration_tables_exist() && rm_v2_load_pending_header($pending_id) !== null) {
+        return rm_v2_finalize_paid_registration($pending_id, $payment_request_id, $payment_option);
+    }
+
     global $wpdb;
 
     if ($pending_id < 1) {

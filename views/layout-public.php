@@ -6,6 +6,7 @@
         <title>Event Registration</title>
 
         <script src="https://cdn.tailwindcss.com"></script>
+        <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
     </head>
     <body class="min-h-screen bg-slate-50 text-slate-900">
         <div class="min-h-screen flex flex-col">

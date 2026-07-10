@@ -651,6 +651,18 @@ function rm_payment_store_request_id(int $pending_id, string $request_id): bool
         return false;
     }
 
+    if (rm_event_registration_tables_exist() && rm_v2_load_pending_header($pending_id) !== null) {
+        $updated = $wpdb->update(
+            'event_registration_pendings',
+            ['payment_request_id' => sanitize_text_field($request_id)],
+            ['id' => $pending_id],
+            ['%s'],
+            ['%d']
+        );
+
+        return $updated !== false;
+    }
+
     $updated = $wpdb->update(
         'bss_registrant_pendings',
         ['payment' => sanitize_text_field($request_id)],
@@ -671,6 +683,24 @@ function rm_payment_load_pending(int $pending_id): ?array
 
     if ($pending_id < 1) {
         return null;
+    }
+
+    if (rm_event_registration_tables_exist()) {
+        $v2_header = rm_v2_load_pending_header($pending_id);
+        if ($v2_header !== null) {
+            $primary = rm_v2_load_pending_primary_registrant($pending_id);
+
+            return [
+                'id'       => $pending_id,
+                'events'   => isset($v2_header['event_id']) ? (int) $v2_header['event_id'] : 0,
+                'amount'   => isset($v2_header['total_amount']) ? (float) $v2_header['total_amount'] : 0.0,
+                'payment'  => $v2_header['payment_request_id'] ?? null,
+                'email'    => $primary['email'] ?? $v2_header['primary_email'] ?? '',
+                '_v2'      => true,
+                '_header'  => $v2_header,
+                '_primary' => $primary,
+            ];
+        }
     }
 
     $pending = $wpdb->get_row(
@@ -788,6 +818,24 @@ function rm_payment_handle_completed(int $pending_id, string $payment_request_id
                     'order_number' => (string) $existing['orderNumber'],
                     'error'        => '',
                 ];
+            }
+
+            if (rm_event_registration_tables_exist()) {
+                $v2_existing = $wpdb->get_row(
+                    $wpdb->prepare(
+                        'SELECT `primary_order_number` FROM `event_registration` WHERE `payment_request_id` = %s LIMIT 1',
+                        sanitize_text_field($payment_request_id)
+                    ),
+                    ARRAY_A
+                );
+
+                if (is_array($v2_existing) && !empty($v2_existing['primary_order_number'])) {
+                    return [
+                        'ok'           => true,
+                        'order_number' => (string) $v2_existing['primary_order_number'],
+                        'error'        => '',
+                    ];
+                }
             }
 
             return [
@@ -910,13 +958,27 @@ function rm_payment_initiate_checkout(
         ];
     }
 
-    $amount = rm_event_registration_price($event);
+    $pending_row = rm_payment_load_pending($pending_id);
+    if ($pending_row !== null && isset($pending_row['amount']) && is_numeric($pending_row['amount'])) {
+        $amount = (float) $pending_row['amount'];
+    } else {
+        $amount = rm_event_registration_price($event);
+    }
+
     if ($amount <= 0) {
         return [
             'ok'    => false,
             'url'   => '',
             'error' => 'This event does not require payment.',
         ];
+    }
+
+    if (
+        is_array($pending_row)
+        && !empty($pending_row['_v2'])
+        && is_array($pending_row['_primary'])
+    ) {
+        $registrant = rm_v2_registrant_for_payment($pending_row['_primary']);
     }
 
     $created = rm_payment_create_request($pending_id, $event, $registrant, $amount, $event_code);

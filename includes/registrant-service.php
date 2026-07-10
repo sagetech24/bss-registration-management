@@ -92,6 +92,9 @@ function rm_present_registrant_row(array $registrant, bool $is_pending = false):
         $payment_status = $is_paid
             ? 'Paid'
             : ucwords(str_replace('_', ' ', $hitpay_status !== '' ? $hitpay_status : $hitpay_request_status));
+    } elseif (!empty($registrant['_is_paid'])) {
+        $is_paid = true;
+        $payment_status = 'Paid';
     } else {
         $is_paid = $payment_raw !== '' && $payment_raw !== null;
         $payment_status = $is_paid ? 'Paid' : 'Pending';
@@ -345,14 +348,19 @@ function rm_present_registrant_profile(array $registrant): array
  */
 function rm_fetch_registrant_by_id(int $registrant_id, int $event_id): array
 {
-    global $wpdb;
-
     if ($registrant_id < 1 || $event_id < 1) {
         return [
             'registrant' => null,
             'error'      => 'Registrant id and event id are required.',
         ];
     }
+
+    $event = rm_get_event_by_id($event_id);
+    if (is_array($event) && rm_event_uses_v2_registration($event) && rm_event_registration_tables_exist()) {
+        return rm_fetch_v2_registrant_by_id($registrant_id, $event_id);
+    }
+
+    global $wpdb;
 
     $registrant = $wpdb->get_row(
         $wpdb->prepare(
@@ -379,13 +387,21 @@ function rm_fetch_registrant_by_id(int $registrant_id, int $event_id): array
 /**
  * @return array{registrants: array<int, array<string, mixed>>, error: string}
  */
-function rm_fetch_registrants_from_db(int $event_id): array
+function rm_fetch_registrants_from_db(int $event_id, ?array $event = null): array
 {
     if ($event_id < 1) {
         return [
             'registrants' => [],
             'error'       => 'Event id is required.',
         ];
+    }
+
+    if ($event === null) {
+        $event = rm_get_event_by_id($event_id);
+    }
+
+    if (is_array($event) && rm_event_uses_v2_registration($event) && rm_event_registration_tables_exist()) {
+        return rm_fetch_v2_registrants_from_db($event_id);
     }
 
     global $wpdb;
@@ -515,6 +531,7 @@ function rm_registrants_summary(array $registrants): array
 
         $is_paid = in_array($hitpay_status, ['succeeded', 'completed'], true)
             || $hitpay_request_status === 'completed'
+            || !empty($row['_is_paid'])
             || ($payment !== '' && $payment !== null);
 
         if ($is_paid) {
@@ -709,7 +726,8 @@ function rm_build_event_registrants_data(): array
         ];
     }
 
-    $db_fetch = rm_fetch_registrants_from_db($event_id);
+    $event = rm_get_event_by_id($event_id);
+    $db_fetch = rm_fetch_registrants_from_db($event_id, $event);
     $rows = [];
 
     if ($db_fetch['error'] === '') {
