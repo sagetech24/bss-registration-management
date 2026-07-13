@@ -264,6 +264,24 @@ document.addEventListener('alpine:init', () => {
                         <h3 class="mt-2 text-2xl font-semibold text-slate-900">
                             <?php echo $event_title; ?>
                         </h3>
+                        <div class="mt-3 flex flex-wrap gap-2">
+                            <a
+                                href="<?php echo esc_url(rm_event_profile_url($selected_event_code, $selected_event_id)); ?>"
+                                class="inline-flex items-center rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50"
+                            >
+                                Event dashboard
+                            </a>
+                            <?php if ($registration_form_url !== '') : ?>
+                                <a
+                                    href="<?php echo esc_url($registration_form_url); ?>"
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    class="inline-flex items-center rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50"
+                                >
+                                    Public form
+                                </a>
+                            <?php endif; ?>
+                        </div>
                         <div class="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-2 text-sm text-slate-600">
                             <?php if (!empty($selected_event['description'])) : ?>
                                 <div class="sm:col-span-2 text-sm text-slate-600">

@@ -316,6 +316,13 @@ function rm_present_event_promotion(array $promotion): array
         $member_rule = 'Up to ' . $limits['max'] . ' members — add more later (min ' . $limits['min'] . ')';
     }
 
+    $mode = (string) ($promotion['registration_mode'] ?? '');
+    $mode_labels = [
+        RM_REGISTRATION_MODE_INDIVIDUAL     => 'Individual',
+        RM_REGISTRATION_MODE_GROUP_FLAT     => 'Group flat',
+        RM_REGISTRATION_MODE_GROUP_PER_HEAD => 'Per-head',
+    ];
+
     return [
         'id'                  => (int) ($promotion['id'] ?? 0),
         'slug'                => (string) ($promotion['slug'] ?? ''),
@@ -327,7 +334,312 @@ function rm_present_event_promotion(array $promotion): array
         'member_min'          => $limits['min'],
         'member_max'          => $limits['max'],
         'require_all_members' => $limits['require_all_members'],
-        'registration_mode'   => (string) ($promotion['registration_mode'] ?? ''),
+        'registration_mode'   => $mode,
+        'registration_mode_label' => $mode_labels[$mode] ?? $mode,
+        'is_active'           => !empty($promotion['is_active']),
+        'valid_from'          => $promotion['valid_from'] ?? null,
+        'valid_until'         => $promotion['valid_until'] ?? null,
+        'sort_order'          => (int) ($promotion['sort_order'] ?? 0),
+    ];
+}
+
+/**
+ * @param array<string, mixed> $input
+ * @return array{ok: bool, error: string, data: array<string, mixed>}
+ */
+function rm_normalize_event_promotion_input(array $input, int $event_id): array
+{
+    $title = isset($input['title']) ? sanitize_text_field((string) $input['title']) : '';
+    if ($title === '') {
+        return [
+            'ok'    => false,
+            'error' => 'Package title is required.',
+            'data'  => [],
+        ];
+    }
+
+    $slug = isset($input['slug'])
+        ? rm_sanitize_package_slug((string) $input['slug'])
+        : '';
+    if ($slug === '') {
+        $slug = rm_sanitize_package_slug(sanitize_title($title));
+    }
+    if ($slug === '') {
+        return [
+            'ok'    => false,
+            'error' => 'Package slug is required.',
+            'data'  => [],
+        ];
+    }
+
+    $mode = isset($input['registration_mode'])
+        ? sanitize_key((string) $input['registration_mode'])
+        : RM_REGISTRATION_MODE_GROUP_FLAT;
+    if (!in_array($mode, rm_registration_modes(), true)) {
+        return [
+            'ok'    => false,
+            'error' => 'Invalid package registration mode.',
+            'data'  => [],
+        ];
+    }
+
+    $member_min = isset($input['member_min']) ? max(1, absint($input['member_min'])) : 1;
+    $member_max = isset($input['member_max']) ? max($member_min, absint($input['member_max'])) : $member_min;
+    if ($mode === RM_REGISTRATION_MODE_INDIVIDUAL) {
+        $member_min = 1;
+        $member_max = 1;
+    }
+
+    $package_price = isset($input['package_price']) ? (float) $input['package_price'] : 0.0;
+    if ($package_price < 0) {
+        return [
+            'ok'    => false,
+            'error' => 'Package price cannot be negative.',
+            'data'  => [],
+        ];
+    }
+
+    $valid_from = rm_normalize_promotion_datetime($input['valid_from'] ?? null);
+    $valid_until = rm_normalize_promotion_datetime($input['valid_until'] ?? null);
+    if ($valid_from === false || $valid_until === false) {
+        return [
+            'ok'    => false,
+            'error' => 'Invalid validity date.',
+            'data'  => [],
+        ];
+    }
+
+    return [
+        'ok'    => true,
+        'error' => '',
+        'data'  => [
+            'event_id'            => $event_id,
+            'slug'                => $slug,
+            'title'               => $title,
+            'description'         => isset($input['description'])
+                ? sanitize_textarea_field((string) $input['description'])
+                : '',
+            'registration_mode'   => $mode,
+            'member_min'          => $member_min,
+            'member_max'          => $member_max,
+            'require_all_members' => !empty($input['require_all_members']) ? 1 : 0,
+            'package_price'       => $package_price,
+            'pricing_config'      => null,
+            'valid_from'          => $valid_from,
+            'valid_until'         => $valid_until,
+        'is_active'           => isset($input['is_active']) && (
+            $input['is_active'] === true
+            || $input['is_active'] === 1
+            || $input['is_active'] === '1'
+        ) ? 1 : 0,
+            'sort_order'          => isset($input['sort_order']) ? absint($input['sort_order']) : 0,
+        ],
+    ];
+}
+
+/**
+ * @param mixed $value
+ * @return string|null|false Null when empty, false when invalid, string datetime otherwise.
+ */
+function rm_normalize_promotion_datetime($value)
+{
+    if ($value === null || $value === '') {
+        return null;
+    }
+
+    $raw = trim((string) $value);
+    if ($raw === '') {
+        return null;
+    }
+
+    $raw = str_replace('T', ' ', $raw);
+    if (preg_match('/^\d{4}-\d{2}-\d{2}$/', $raw)) {
+        $raw .= ' 00:00:00';
+    } elseif (preg_match('/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$/', $raw)) {
+        $raw .= ':00';
+    }
+
+    if (strtotime($raw) === false) {
+        return false;
+    }
+
+    return $raw;
+}
+
+/**
+ * @param array<string, mixed> $input
+ * @return array{ok: bool, error: string, id: int}
+ */
+function rm_create_event_promotion(int $event_id, array $input): array
+{
+    global $wpdb;
+
+    $normalized = rm_normalize_event_promotion_input($input, $event_id);
+    if (!$normalized['ok']) {
+        return [
+            'ok'    => false,
+            'error' => $normalized['error'],
+            'id'    => 0,
+        ];
+    }
+
+    $data = $normalized['data'];
+    $existing = rm_fetch_event_promotion($event_id, $data['slug']);
+    if ($existing !== null) {
+        return [
+            'ok'    => false,
+            'error' => 'A package with this slug already exists for the event.',
+            'id'    => 0,
+        ];
+    }
+
+    foreach (['pricing_config', 'valid_from', 'valid_until', 'description'] as $nullable_key) {
+        if (!array_key_exists($nullable_key, $data)) {
+            continue;
+        }
+        if ($data[$nullable_key] === null || $data[$nullable_key] === '') {
+            $data[$nullable_key] = null;
+        }
+    }
+
+    $inserted = $wpdb->insert('event_promotions', $data);
+
+    if ($inserted === false) {
+        return [
+            'ok'    => false,
+            'error' => $wpdb->last_error !== '' ? $wpdb->last_error : 'Failed to create package.',
+            'id'    => 0,
+        ];
+    }
+
+    return [
+        'ok'    => true,
+        'error' => '',
+        'id'    => (int) $wpdb->insert_id,
+    ];
+}
+
+/**
+ * @param array<string, mixed> $input
+ * @return array{ok: bool, error: string}
+ */
+function rm_update_event_promotion(int $promotion_id, int $event_id, array $input): array
+{
+    global $wpdb;
+
+    if ($promotion_id < 1 || $event_id < 1) {
+        return [
+            'ok'    => false,
+            'error' => 'Invalid package id.',
+        ];
+    }
+
+    $current = rm_fetch_event_promotion_by_id($promotion_id, $event_id);
+    if ($current === null) {
+        return [
+            'ok'    => false,
+            'error' => 'Package could not be found.',
+        ];
+    }
+
+    $normalized = rm_normalize_event_promotion_input($input, $event_id);
+    if (!$normalized['ok']) {
+        return [
+            'ok'    => false,
+            'error' => $normalized['error'],
+        ];
+    }
+
+    $data = $normalized['data'];
+    unset($data['event_id']);
+
+    $existing_pricing = $current['pricing_config'] ?? [];
+    $data['pricing_config'] = is_array($existing_pricing) && $existing_pricing !== []
+        ? wp_json_encode($existing_pricing)
+        : null;
+
+    foreach (['pricing_config', 'valid_from', 'valid_until', 'description'] as $nullable_key) {
+        if (!array_key_exists($nullable_key, $data)) {
+            continue;
+        }
+        if ($data[$nullable_key] === null || $data[$nullable_key] === '') {
+            $data[$nullable_key] = null;
+        }
+    }
+
+    $slug_owner = rm_fetch_event_promotion($event_id, $data['slug']);
+    if ($slug_owner !== null && (int) $slug_owner['id'] !== $promotion_id) {
+        return [
+            'ok'    => false,
+            'error' => 'A package with this slug already exists for the event.',
+        ];
+    }
+
+    $updated = $wpdb->update(
+        'event_promotions',
+        $data,
+        [
+            'id'       => $promotion_id,
+            'event_id' => $event_id,
+        ]
+    );
+
+    if ($updated === false) {
+        return [
+            'ok'    => false,
+            'error' => $wpdb->last_error !== '' ? $wpdb->last_error : 'Failed to update package.',
+        ];
+    }
+
+    return [
+        'ok'    => true,
+        'error' => '',
+    ];
+}
+
+/**
+ * @return array{ok: bool, error: string}
+ */
+function rm_set_event_promotion_active(int $promotion_id, int $event_id, bool $is_active): array
+{
+    global $wpdb;
+
+    if ($promotion_id < 1 || $event_id < 1) {
+        return [
+            'ok'    => false,
+            'error' => 'Invalid package id.',
+        ];
+    }
+
+    $current = rm_fetch_event_promotion_by_id($promotion_id, $event_id);
+    if ($current === null) {
+        return [
+            'ok'    => false,
+            'error' => 'Package could not be found.',
+        ];
+    }
+
+    $updated = $wpdb->update(
+        'event_promotions',
+        ['is_active' => $is_active ? 1 : 0],
+        [
+            'id'       => $promotion_id,
+            'event_id' => $event_id,
+        ],
+        ['%d'],
+        ['%d', '%d']
+    );
+
+    if ($updated === false) {
+        return [
+            'ok'    => false,
+            'error' => $wpdb->last_error !== '' ? $wpdb->last_error : 'Failed to update package status.',
+        ];
+    }
+
+    return [
+        'ok'    => true,
+        'error' => '',
     ];
 }
 

@@ -153,6 +153,10 @@ function rm_active_nav(string $view_action): string
         return 'payment-transactions';
     }
 
+    if ($view_action === 'get-event-profile') {
+        return 'events';
+    }
+
     return 'events';
 }
 

@@ -19,6 +19,7 @@ require_once __DIR__ . '/includes/hitpay-sync-service.php';
 require_once __DIR__ . '/includes/payment-transactions-service.php';
 require_once __DIR__ . '/includes/request.php';
 require_once __DIR__ . '/includes/event-presenter.php';
+require_once __DIR__ . '/includes/event-profile-service.php';
 require_once __DIR__ . '/includes/controller.php';
 require_once __DIR__ . '/includes/view.php';
 require_once __DIR__ . '/includes/legacy-redirect.php';

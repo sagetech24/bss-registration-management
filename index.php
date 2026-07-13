@@ -56,6 +56,14 @@ if ($context['view_action'] === 'register') {
     } else {
         $view = 'registrants';
     }
+} elseif ($context['view_action'] === 'get-event-profile') {
+    if (!empty($context['event_not_found'])) {
+        status_header(404);
+        nocache_headers();
+        $view = '404';
+    } else {
+        $view = 'event-profile';
+    }
 } elseif ($context['view_action'] === 'payment-transactions') {
     $view = 'payment-transactions';
 } else {

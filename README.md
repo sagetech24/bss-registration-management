@@ -71,6 +71,7 @@ Base URL: `/registration-manager/`
 | Query param | View |
 |-------------|------|
 | *(default)* | Events dashboard |
+| `action=get-event-profile&event_code=...&event_id=...` | Event dashboard (settings, packages, summary) |
 | `action=get-event-registrants&event_code=...&event_id=...` | Registrants for an event |
 | `action=get-event&event_code=...` | Event page (reserved) |
 | `action=register&event_code=...` | Public registration form (default / individual) |
@@ -195,7 +196,8 @@ includes/
   schema-install.php           v2 + event_promotions DDL installer
   registration-config-service.php  Parse settings.registration
   form-schema-service.php      Dynamic form schema + validation
-  event-promotion-service.php  Package resolve / merge / present
+  event-promotion-service.php  Package resolve / merge / present / CRUD
+  event-profile-service.php Event dashboard context + POST handlers
   pricing-service.php          Server-side pricing (incl. early bird + packages)
   event-registration-service.php   v2 header pending/confirmed flow
   event-registrant-service.php     v2 line items + dashboard normalize
@@ -212,6 +214,7 @@ includes/
 
 views/
   events.php              Event list dashboard
+  event-profile.php       Event dashboard (settings + packages CRUD)
   registrants.php         Registrant list
   register.php            Public registration form (schema-driven for v2)
   partials/

@@ -262,6 +262,11 @@ function rm_build_dashboard_context(): array
     rm_require_login();
 
     $view_action = rm_get_view_action();
+
+    if ($view_action === 'get-event-profile' && $_SERVER['REQUEST_METHOD'] === 'POST') {
+        rm_handle_event_profile_post();
+    }
+
     $event_search = rm_get_event_search();
     $page_url = rm_page_url();
 
@@ -301,6 +306,27 @@ function rm_build_dashboard_context(): array
             $context['selected_event_code'] = $registrants_context['selected_event_code'];
         } else {
             $context = array_merge($context, $registrants_context);
+        }
+    }
+
+    if ($view_action === 'get-event-profile') {
+        $event_code = rm_get_event_code();
+        $event_id = rm_get_event_id();
+        if ($event_code === '' && $event_id < 1) {
+            wp_safe_redirect(rm_page_url());
+            exit;
+        }
+
+        $profile_context = rm_build_event_profile_context($fetch['events'], $event_code, $event_id);
+
+        if (!empty($profile_context['event_not_found'])) {
+            $context['event_not_found'] = true;
+            $context['selected_event_code'] = $profile_context['selected_event_code'] ?? $event_code;
+        } elseif (($profile_context['selected_event'] ?? null) === null && $event_code === '' && $event_id < 1) {
+            wp_safe_redirect(rm_page_url());
+            exit;
+        } else {
+            $context = array_merge($context, $profile_context);
         }
     }
 
