@@ -56,6 +56,7 @@ foreach ($promotions as $promo) {
         'sort_order'          => (int) ($promo['sort_order'] ?? 0),
         'valid_from_local'    => (string) ($promo['valid_from_local'] ?? ''),
         'valid_until_local'   => (string) ($promo['valid_until_local'] ?? ''),
+        'package_href'        => (string) ($promo['package_href'] ?? ''),
     ];
 }
 ?>
@@ -69,14 +70,139 @@ foreach ($promotions as $promo) {
     </div>
 <?php else : ?>
 
-<section
-    class="space-y-6"
-    x-data="rmEventProfile({
-        usesV2: <?php echo $uses_v2 ? 'true' : 'false'; ?>,
-        mode: <?php echo wp_json_encode($mode_value); ?>,
-        promotions: <?php echo wp_json_encode($promotions_json); ?>
-    })"
->
+<?php
+$event_profile_alpine_config = [
+    'usesV2'     => (bool) $uses_v2,
+    'mode'       => $mode_value,
+    'promotions' => $promotions_json,
+];
+?>
+
+<script>
+document.addEventListener('alpine:init', () => {
+    const profileConfig = <?php echo wp_json_encode($event_profile_alpine_config); ?>;
+
+    Alpine.data('rmEventProfile', () => ({
+        usesV2: !!profileConfig.usesV2,
+        enableV2: !!profileConfig.usesV2,
+        mode: profileConfig.mode || 'individual',
+        promotions: Array.isArray(profileConfig.promotions) ? profileConfig.promotions : [],
+        modalOpen: false,
+        copiedPromoId: 0,
+        _copiedTimer: null,
+        form: {
+            id: 0,
+            title: '',
+            slug: '',
+            description: '',
+            registration_mode: 'group_flat',
+            member_min: 2,
+            member_max: 2,
+            require_all_members: true,
+            package_price: 0,
+            is_active: true,
+            sort_order: 0,
+            valid_from_local: '',
+            valid_until_local: '',
+        },
+        blankForm() {
+            return {
+                id: 0,
+                title: '',
+                slug: '',
+                description: '',
+                registration_mode: 'group_flat',
+                member_min: 2,
+                member_max: 2,
+                require_all_members: true,
+                package_price: 0,
+                is_active: true,
+                sort_order: 0,
+                valid_from_local: '',
+                valid_until_local: '',
+            };
+        },
+        openCreate() {
+            this.form = this.blankForm();
+            this.modalOpen = true;
+        },
+        openEdit(id) {
+            const promo = this.promotions.find((row) => Number(row.id) === Number(id));
+            if (!promo) {
+                return;
+            }
+            this.form = {
+                id: promo.id,
+                title: promo.title || '',
+                slug: promo.slug || '',
+                description: promo.description || '',
+                registration_mode: promo.registration_mode || 'group_flat',
+                member_min: promo.member_min || 1,
+                member_max: promo.member_max || 1,
+                require_all_members: !!promo.require_all_members,
+                package_price: promo.package_price || 0,
+                is_active: !!promo.is_active,
+                sort_order: promo.sort_order || 0,
+                valid_from_local: promo.valid_from_local || '',
+                valid_until_local: promo.valid_until_local || '',
+            };
+            this.modalOpen = true;
+        },
+        closeModal() {
+            this.modalOpen = false;
+        },
+        async copyPromoUrl(id) {
+            const promo = this.promotions.find((row) => Number(row.id) === Number(id));
+            const url = promo && promo.package_href ? String(promo.package_href) : '';
+            if (url === '') {
+                return;
+            }
+
+            let copied = false;
+            if (navigator.clipboard && window.isSecureContext) {
+                try {
+                    await navigator.clipboard.writeText(url);
+                    copied = true;
+                } catch (e) {
+                    copied = false;
+                }
+            }
+
+            if (!copied) {
+                const input = document.createElement('textarea');
+                input.value = url;
+                input.setAttribute('readonly', '');
+                input.style.position = 'fixed';
+                input.style.top = '0';
+                input.style.left = '0';
+                input.style.opacity = '0';
+                document.body.appendChild(input);
+                input.focus();
+                input.select();
+                try {
+                    copied = document.execCommand('copy');
+                } catch (e) {
+                    copied = false;
+                }
+                document.body.removeChild(input);
+            }
+
+            if (!copied) {
+                window.prompt('Copy package URL', url);
+                return;
+            }
+
+            this.copiedPromoId = Number(id);
+            window.clearTimeout(this._copiedTimer);
+            this._copiedTimer = window.setTimeout(() => {
+                this.copiedPromoId = 0;
+            }, 2000);
+        },
+    }));
+});
+</script>
+
+<section class="space-y-6" x-data="rmEventProfile()">
     <?php if (is_array($profile_flash) && ($profile_flash['message'] ?? '') !== '') : ?>
         <?php $flash_ok = ($profile_flash['type'] ?? '') === 'success'; ?>
         <div class="rounded-lg border px-4 py-3 text-sm <?php echo $flash_ok ? 'bg-emerald-50 border-emerald-200 text-emerald-800' : 'bg-rose-50 border-rose-200 text-rose-800'; ?>">
@@ -254,8 +380,9 @@ foreach ($promotions as $promo) {
                     Enable v2 registration in settings before creating packages.
                 </div>
             <?php elseif ($promotions === []) : ?>
-                <div class="p-5 text-sm text-slate-600">
-                    No packages yet. Add a Couple, Company, or other package to generate alternate registration URLs.
+                <div class="p-5 text-center">
+                    <p class="mb-2 text-2xl font-semibold text-slate-300">No packages yet.</p> 
+                    <p class="mb-2 text-sm italic text-slate-500">Add a Couple, Company, or other package to generate alternate registration URLs.</p>
                 </div>
             <?php else : ?>
                 <div class="overflow-x-auto">
@@ -283,10 +410,9 @@ foreach ($promotions as $promo) {
                                             <button
                                                 type="button"
                                                 class="mt-1 text-xs text-indigo-700 hover:text-indigo-900"
-                                                @click="copyUrl(<?php echo wp_json_encode((string) $promo['package_href']); ?>)"
-                                            >
-                                                Copy URL
-                                            </button>
+                                                @click="copyPromoUrl(<?php echo (int) ($promo['id'] ?? 0); ?>)"
+                                                x-text="copiedPromoId === <?php echo (int) ($promo['id'] ?? 0); ?> ? 'Copied!' : 'Copy URL'"
+                                            ></button>
                                         <?php endif; ?>
                                     </td>
                                     <td class="px-4 py-3 text-slate-700"><?php echo esc_html((string) ($promo['registration_mode_label'] ?? $promo['registration_mode'] ?? '')); ?></td>
@@ -327,7 +453,7 @@ foreach ($promotions as $promo) {
     <div
         x-show="modalOpen"
         x-cloak
-        class="fixed inset-0 z-40 flex items-center justify-center p-4"
+        class="fixed inset-0 -top-8 z-40 flex items-center justify-center p-4"
         style="display: none;"
     >
         <div class="absolute inset-0 bg-slate-900/40" @click="closeModal()"></div>
@@ -406,86 +532,6 @@ foreach ($promotions as $promo) {
         </div>
     </div>
 </section>
-
-<script>
-document.addEventListener('alpine:init', () => {
-    Alpine.data('rmEventProfile', (config = {}) => ({
-        usesV2: !!config.usesV2,
-        enableV2: !!config.usesV2,
-        mode: config.mode || 'individual',
-        promotions: Array.isArray(config.promotions) ? config.promotions : [],
-        modalOpen: false,
-        form: {
-            id: 0,
-            title: '',
-            slug: '',
-            description: '',
-            registration_mode: 'group_flat',
-            member_min: 2,
-            member_max: 2,
-            require_all_members: true,
-            package_price: 0,
-            is_active: true,
-            sort_order: 0,
-            valid_from_local: '',
-            valid_until_local: '',
-        },
-        blankForm() {
-            return {
-                id: 0,
-                title: '',
-                slug: '',
-                description: '',
-                registration_mode: 'group_flat',
-                member_min: 2,
-                member_max: 2,
-                require_all_members: true,
-                package_price: 0,
-                is_active: true,
-                sort_order: 0,
-                valid_from_local: '',
-                valid_until_local: '',
-            };
-        },
-        openCreate() {
-            this.form = this.blankForm();
-            this.modalOpen = true;
-        },
-        openEdit(id) {
-            const promo = this.promotions.find((row) => Number(row.id) === Number(id));
-            if (!promo) {
-                return;
-            }
-            this.form = {
-                id: promo.id,
-                title: promo.title || '',
-                slug: promo.slug || '',
-                description: promo.description || '',
-                registration_mode: promo.registration_mode || 'group_flat',
-                member_min: promo.member_min || 1,
-                member_max: promo.member_max || 1,
-                require_all_members: !!promo.require_all_members,
-                package_price: promo.package_price || 0,
-                is_active: !!promo.is_active,
-                sort_order: promo.sort_order || 0,
-                valid_from_local: promo.valid_from_local || '',
-                valid_until_local: promo.valid_until_local || '',
-            };
-            this.modalOpen = true;
-        },
-        closeModal() {
-            this.modalOpen = false;
-        },
-        async copyUrl(url) {
-            try {
-                await navigator.clipboard.writeText(url);
-            } catch (e) {
-                window.prompt('Copy package URL', url);
-            }
-        },
-    }));
-});
-</script>
 
 <style>[x-cloak]{display:none!important;}</style>
 
