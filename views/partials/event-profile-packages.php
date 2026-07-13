@@ -162,11 +162,15 @@ document.addEventListener('alpine:init', () => {
         </div>
         <button
             type="button"
-            class="inline-flex items-center justify-center rounded-lg bg-indigo-700 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-800 disabled:opacity-50 disabled:cursor-not-allowed"
+            class="inline-flex items-center gap-1 justify-center rounded-lg bg-indigo-700 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-800 disabled:opacity-50 disabled:cursor-not-allowed"
             <?php echo $uses_v2 ? '' : 'disabled'; ?>
             @click="openCreate()"
         >
-            Add package
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="size-4">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
+            </svg>
+
+            <span class="hidden sm:inline">Add package</span>
         </button>
     </div>
 
@@ -200,14 +204,15 @@ document.addEventListener('alpine:init', () => {
                         <tr class="align-top">
                             <td class="px-4 py-3">
                                 <div class="font-medium text-slate-900"><?php echo esc_html((string) ($promo['title'] ?? '')); ?></div>
-                                <div class="text-xs text-slate-500 mt-0.5">slug: <?php echo esc_html((string) ($promo['slug'] ?? '')); ?></div>
+                                <!-- <div class="text-xs text-slate-500 mt-0.5">slug: <?php //echo esc_html((string) ($promo['slug'] ?? '')); ?></div> -->
                                 <?php if (!empty($promo['package_href'])) : ?>
                                     <button
                                         type="button"
-                                        class="mt-1 text-xs text-indigo-700 hover:text-indigo-900"
+                                        class="mt-1 text-[10px] bg-indigo-50 text-indigo-700 hover:text-indigo-900 rounded-md px-2 py-1 inline-flex items-center gap-1"
                                         @click="copyPromoUrl(<?php echo (int) ($promo['id'] ?? 0); ?>)"
                                         x-text="copiedPromoId === <?php echo (int) ($promo['id'] ?? 0); ?> ? 'Copied!' : 'Copy URL'"
-                                    ></button>
+                                    >
+                                </button>
                                 <?php endif; ?>
                             </td>
                             <td class="px-4 py-3 text-slate-700"><?php echo esc_html((string) ($promo['registration_mode_label'] ?? $promo['registration_mode'] ?? '')); ?></td>
@@ -215,23 +220,23 @@ document.addEventListener('alpine:init', () => {
                             <td class="px-4 py-3 text-slate-900 font-medium"><?php echo esc_html((string) ($promo['price_display'] ?? '')); ?></td>
                             <td class="px-4 py-3">
                                 <?php if (!empty($promo['is_active'])) : ?>
-                                    <span class="inline-flex rounded-full bg-emerald-50 px-2 py-0.5 text-xs font-medium text-emerald-700">Active</span>
+                                    <span class="inline-flex rounded-full border border-emerald-500 bg-emerald-100 px-2 py-0.5 text-xs font-medium text-emerald-700">Active</span>
                                 <?php else : ?>
-                                    <span class="inline-flex rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-600">Inactive</span>
+                                    <span class="inline-flex rounded-full border border-slate-300 bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-600">Inactive</span>
                                 <?php endif; ?>
-                                <div class="mt-1 text-[11px] text-slate-400">
-                                    <?php echo esc_html((string) ($promo['valid_from_display'] ?? '—')); ?>
-                                    →
-                                    <?php echo esc_html((string) ($promo['valid_until_display'] ?? '—')); ?>
+                                <div class="mt-1 text-[11px] text-slate-400 flex flex-col">
+                                    <span class="">Start: <?php echo 'Start:' .  esc_html((string) ($promo['valid_from_display'] ?? '—')); ?></span>
+                                    <span class="">End: <?php echo esc_html((string) ($promo['valid_until_display'] ?? '—')); ?></span>
                                 </div>
                             </td>
                             <td class="px-4 py-3 text-right whitespace-nowrap">
                                 <button type="button" class="text-xs font-medium text-indigo-700 hover:text-indigo-900" @click="openEdit(<?php echo (int) ($promo['id'] ?? 0); ?>)">Edit</button>
-                                <form method="post" action="<?php echo esc_url($profile_form_action); ?>" class="inline ml-2">
+                                <span class="text-slate-600">|</span>
+                                <form method="post" action="<?php echo esc_url($profile_form_action); ?>" class="inline">
                                     <input type="hidden" name="rm_action" value="<?php echo !empty($promo['is_active']) ? 'deactivate_promotion' : 'activate_promotion'; ?>" />
                                     <input type="hidden" name="promotion_id" value="<?php echo esc_attr((string) (int) ($promo['id'] ?? 0)); ?>" />
                                     <?php wp_nonce_field('rm_event_profile', 'rm_event_profile_nonce'); ?>
-                                    <button type="submit" class="text-xs font-medium text-slate-600 hover:text-slate-900">
+                                    <button type="submit" class="text-xs font-medium text-slate-600 hover:text-slate-900 <?php echo !empty($promo['is_active']) ? 'text-red-700 hover:text-red-900' : 'text-emerald-700 hover:text-emerald-900'; ?>">
                                         <?php echo !empty($promo['is_active']) ? 'Deactivate' : 'Activate'; ?>
                                     </button>
                                 </form>

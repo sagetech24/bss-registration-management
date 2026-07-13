@@ -251,10 +251,11 @@ function rm_get_registrant_id(): int
 function rm_event_profile_tabs(): array
 {
     return [
-        'packages'    => 'Promotion Packages',
-        'promo-codes' => 'Promo Codes',
-        'registrants' => 'Registrants',
-        'settings'    => 'Event Settings',
+        'packages'     => 'Promotion Packages',
+        'promo-codes'  => 'Promo Codes',
+        'registrants'  => 'Registrants',
+        'custom-form'  => 'Custom Form Options',
+        'settings'     => 'Event Settings',
     ];
 }
 

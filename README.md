@@ -71,12 +71,8 @@ Base URL: `/registration-manager/`
 | Query param | View |
 |-------------|------|
 | *(default)* | Events dashboard |
-| `action=get-event-profile&event_code=...&event_id=...` | Event dashboard (default tab: packages) |
-| `action=get-event-profile&...&tab=packages` | Promotion packages CRUD |
-| `action=get-event-profile&...&tab=promo-codes` | Promo codes (placeholder) |
-| `action=get-event-profile&...&tab=registrants` | Event registrants table |
-| `action=get-event-profile&...&tab=settings` | Registration / event settings |
-| `action=get-event-registrants&event_code=...&event_id=...` | Redirects to event dashboard registrants tab |
+| `action=get-event-profile&event_code=...&event_id=...` | Event dashboard (settings, packages, summary) |
+| `action=get-event-registrants&event_code=...&event_id=...` | Registrants for an event |
 | `action=get-event&event_code=...` | Event page (reserved) |
 | `action=register&event_code=...` | Public registration form (default / individual) |
 | `action=register&event_code=...&package={slug}` | Public form for a named registration package |
@@ -218,15 +214,10 @@ includes/
 
 views/
   events.php              Event list dashboard
-  event-profile.php       Event dashboard (tabbed: packages, promo codes, registrants, settings)
-  registrants.php         Redirects to event dashboard registrants tab
+  event-profile.php       Event dashboard (settings + packages CRUD)
+  registrants.php         Registrant list
   register.php            Public registration form (schema-driven for v2)
   partials/
-    event-profile-packages.php
-    event-profile-promo-codes.php
-    event-profile-registrants.php
-    event-profile-settings.php
-    registrants-panel.php Shared registrants table (Alpine)
     form-field.php        Single dynamic field renderer
     dynamic-form.php      Schema field loop
     register-wizard.php   Alpine 3-step group wizard

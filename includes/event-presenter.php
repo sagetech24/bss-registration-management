@@ -44,23 +44,20 @@ function rm_present_event_card(array $event, string $page_url): array
     $venue_show = $venue_raw !== '' ? wp_trim_words($venue_raw, 12, '…') : '';
 
     $event_id = isset($event['id']) ? absint($event['id']) : 0;
+    $registrants_args = [
+        'action'     => 'get-event-registrants',
+        'event_code' => $program_code,
+    ];
+    if ($event_id > 0) {
+        $registrants_args['event_id'] = $event_id;
+    }
 
     $profile_args = [
         'action'     => 'get-event-profile',
         'event_code' => $program_code,
-        'tab'        => 'packages',
     ];
     if ($event_id > 0) {
         $profile_args['event_id'] = $event_id;
-    }
-
-    $registrants_profile_args = [
-        'action'     => 'get-event-profile',
-        'event_code' => $program_code,
-        'tab'        => 'registrants',
-    ];
-    if ($event_id > 0) {
-        $registrants_profile_args['event_id'] = $event_id;
     }
 
     return [
@@ -70,7 +67,7 @@ function rm_present_event_card(array $event, string $page_url): array
         'date_block'       => $date_block,
         'venue_show'       => $venue_show,
         'profile_href'     => add_query_arg($profile_args, $page_url),
-        'registrants_href' => add_query_arg($registrants_profile_args, $page_url),
+        'registrants_href' => add_query_arg($registrants_args, $page_url),
         'registration_href' => rm_registration_url(
             $program_code !== '' ? ['event_code' => $program_code] : []
         ),

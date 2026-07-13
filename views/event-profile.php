@@ -139,6 +139,8 @@ $venue_show = (string) ($event_card['venue_show'] ?? '');
             <?php include __DIR__ . '/partials/event-profile-promo-codes.php'; ?>
         <?php elseif ($profile_tab === 'registrants') : ?>
             <?php include __DIR__ . '/partials/event-profile-registrants.php'; ?>
+        <?php elseif ($profile_tab === 'custom-form') : ?>
+            <?php include __DIR__ . '/partials/event-profile-custom-form.php'; ?>
         <?php else : ?>
             <?php include __DIR__ . '/partials/event-profile-settings.php'; ?>
         <?php endif; ?>

@@ -8,6 +8,11 @@
         <?php rm_render_nav_item('events', 'Events', add_query_arg([], $page_url), $active_nav); ?>
 
         <?php
+        $registrants_href = add_query_arg(['action' => 'get-event-registrants', 'event_code' => ''], $page_url);
+        rm_render_nav_item('registrants', 'Registrants', $registrants_href, $active_nav);
+        ?>
+
+        <?php
         $payment_transactions_href = add_query_arg(['action' => 'payment-transactions'], $page_url);
         rm_render_nav_item('payment-transactions', 'Payment Transactions', $payment_transactions_href, $active_nav);
         ?>
