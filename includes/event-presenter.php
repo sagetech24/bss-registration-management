@@ -62,5 +62,35 @@ function rm_present_event_card(array $event, string $page_url): array
         'registration_href' => rm_registration_url(
             $program_code !== '' ? ['event_code' => $program_code] : []
         ),
+        'package_urls'     => rm_present_event_package_urls($event, $program_code),
     ];
+}
+
+/**
+ * @param array<string, mixed> $event
+ * @return list<array{title: string, slug: string, href: string, price_display: string}>
+ */
+function rm_present_event_package_urls(array $event, string $program_code): array
+{
+    $event_id = isset($event['id']) ? absint($event['id']) : 0;
+    if ($event_id < 1 || $program_code === '' || !rm_event_uses_v2_registration($event)) {
+        return [];
+    }
+
+    $promotions = rm_list_event_promotions($event_id, true);
+    $out = [];
+    foreach ($promotions as $promotion) {
+        $present = rm_present_event_promotion($promotion);
+        $out[] = [
+            'title'         => $present['title'],
+            'slug'          => $present['slug'],
+            'href'          => rm_registration_url([
+                'event_code' => $program_code,
+                'package'    => $present['slug'],
+            ]),
+            'price_display' => $present['price_display'],
+        ];
+    }
+
+    return $out;
 }

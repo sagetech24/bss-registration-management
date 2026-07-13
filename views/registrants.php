@@ -53,6 +53,7 @@ $registrants_config = [
     'profileUrl'         => esc_url_raw($profile_api_url),
     'eventId'            => $selected_event_id,
     'eventIsFree'        => $event_is_free,
+    'initialPackageFilter' => rm_get_package_filter(),
 ];
 ?>
 
@@ -68,6 +69,12 @@ document.addEventListener('alpine:init', () => {
             pending_count: 0,
             total_revenue: 0,
         },
+        packageSummary: [],
+        packageOptions: [
+            { value: 'all', label: 'All packages' },
+            { value: 'individual', label: 'Individual' },
+        ],
+        packageFilter: <?php echo wp_json_encode($registrants_config['initialPackageFilter']); ?>,
         modalOpen: false,
         paymentLoading: false,
         paymentError: '',
@@ -95,7 +102,14 @@ document.addEventListener('alpine:init', () => {
             this.error = '';
 
             try {
-                const response = await fetch(this.apiUrl, {
+                const url = new URL(this.apiUrl, window.location.origin);
+                if (this.packageFilter && this.packageFilter !== 'all') {
+                    url.searchParams.set('package_filter', this.packageFilter);
+                } else {
+                    url.searchParams.delete('package_filter');
+                }
+
+                const response = await fetch(url.toString(), {
                     credentials: 'same-origin',
                     headers: { 'X-Requested-With': 'XMLHttpRequest' },
                 });
@@ -114,12 +128,20 @@ document.addEventListener('alpine:init', () => {
 
                 this.rows = data.registrant_rows || [];
                 this.summary = data.registrants_summary || this.summary;
+                this.packageSummary = data.package_summary || [];
+                this.packageOptions = data.package_options || this.packageOptions;
+                if (data.package_filter) {
+                    this.packageFilter = data.package_filter;
+                }
             } catch (e) {
                 this.error = 'Failed to load registrants.';
                 this.rows = [];
             } finally {
                 this.loading = false;
             }
+        },
+        async applyPackageFilter() {
+            await this.load();
         },
         async openPaymentDetails(row) {
             if (!row?.has_payment || !row.payment_request_id) {
@@ -252,7 +274,7 @@ document.addEventListener('alpine:init', () => {
                         </div>
                     </div>
 
-                    <div class="mt-6 mb-12">
+                    <div class="mt-6 mb-6">
                         <div class="grid grid-cols-1 sm:grid-cols-1 xl:grid-cols-3 gap-4">
                             <div class="rounded-xl shadow-md border border-amber-200 bg-amber-50 p-4">
                                 <p class="text-xs font-medium uppercase tracking-wide text-slate-500">Total registrants</p>
@@ -290,6 +312,56 @@ document.addEventListener('alpine:init', () => {
                                     x-text="formatAmount(summary.total_revenue)"
                                 ></p>
                             </div>
+                        </div>
+                    </div>
+
+                    <div
+                        x-show="!loading && packageSummary.length > 0"
+                        x-cloak
+                        class="mb-12 rounded-xl border border-slate-200 bg-white p-4"
+                        style="display: none;"
+                    >
+                        <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-3">
+                            <h4 class="text-sm font-semibold text-slate-800">By registration package</h4>
+                            <div class="flex items-center gap-2">
+                                <label for="package_filter" class="text-xs text-slate-500">Filter</label>
+                                <select
+                                    id="package_filter"
+                                    class="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm focus:border-indigo-500 focus:outline-none"
+                                    x-model="packageFilter"
+                                    @change="applyPackageFilter()"
+                                >
+                                    <template x-for="opt in packageOptions" :key="opt.value">
+                                        <option :value="opt.value" x-text="opt.label"></option>
+                                    </template>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="flex flex-wrap gap-2">
+                            <template x-for="bucket in packageSummary" :key="bucket.key">
+                                <button
+                                    type="button"
+                                    class="rounded-lg border px-3 py-2 text-left text-xs transition"
+                                    :class="packageFilter === bucket.key
+                                        ? 'border-indigo-300 bg-indigo-50 text-indigo-800'
+                                        : 'border-slate-200 bg-slate-50 text-slate-700 hover:bg-slate-100'"
+                                    @click="packageFilter = bucket.key; applyPackageFilter()"
+                                >
+                                    <span class="font-semibold" x-text="bucket.label"></span>
+                                    <span class="mt-0.5 block text-slate-500">
+                                        <span x-text="bucket.registrations"></span> registration(s),
+                                        <span x-text="bucket.people"></span> people
+                                    </span>
+                                </button>
+                            </template>
+                            <button
+                                type="button"
+                                class="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-medium text-slate-600 hover:bg-slate-50"
+                                x-show="packageFilter !== 'all'"
+                                @click="packageFilter = 'all'; applyPackageFilter()"
+                            >
+                                Clear filter
+                            </button>
                         </div>
                     </div>
                 </div>
@@ -399,6 +471,7 @@ document.addEventListener('alpine:init', () => {
                             <tr>
                                 <th scope="col" class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-slate-600">Order number</th>
                                 <th scope="col" class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-slate-600">Registrant</th>
+                                <th scope="col" class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-slate-600">Package</th>
                                 <th scope="col" x-show="!eventIsFree" class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-slate-600">Payment Method</th>
                                 <th scope="col" x-show="!eventIsFree" class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-slate-600">Status</th>
                                 <th scope="col" x-show="!eventIsFree" class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-slate-600">Amount</th>
@@ -427,6 +500,16 @@ document.addEventListener('alpine:init', () => {
                                                 <span x-text="row.phone || 'No phone'"></span>
                                             </p>
                                         </div>
+                                    </td>
+                                    <td class="whitespace-nowrap px-4 py-3 text-xs">
+                                        <span
+                                            class="inline-flex max-w-[12rem] truncate rounded-full px-2.5 py-1 text-xs font-semibold"
+                                            :class="row.event_promotion_id
+                                                ? 'bg-indigo-100 text-indigo-800'
+                                                : 'bg-slate-100 text-slate-700'"
+                                            :title="row.package_label || 'Individual'"
+                                            x-text="row.package_label || 'Individual'"
+                                        ></span>
                                     </td>
                                     <td x-show="!eventIsFree" class="px-4 py-3 text-xs text-slate-700">
                                         <div class="flex items-center gap-2">

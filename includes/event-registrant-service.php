@@ -54,7 +54,20 @@ function rm_build_member_rows_from_responses(array $schema, array $members_respo
 function rm_submit_v2_registration(array $event): array
 {
     $schema = rm_parse_form_schema($event);
-    $config = rm_parse_registration_config($event);
+    $resolved = rm_resolve_registration_promotion($event);
+    if (!$resolved['ok']) {
+        return [
+            'ok'           => false,
+            'error'        => $resolved['error'],
+            'status'       => '',
+            'pending_id'   => 0,
+            'order_number' => '',
+            'form_errors'  => [],
+        ];
+    }
+
+    $promotion = $resolved['promotion'];
+    $config = rm_effective_registration_config($event, $promotion);
     $members_responses = rm_parse_members_from_post();
 
     if ($members_responses === []) {
@@ -62,12 +75,12 @@ function rm_submit_v2_registration(array $event): array
             $members_responses = [rm_form_responses_from_post($schema)];
         } else {
             return [
-                'ok'          => false,
-                'error'       => 'No member data was submitted.',
-                'status'      => '',
-                'pending_id'  => 0,
-                'order_number'=> '',
-                'form_errors' => [],
+                'ok'           => false,
+                'error'        => 'No member data was submitted.',
+                'status'       => '',
+                'pending_id'   => 0,
+                'order_number' => '',
+                'form_errors'  => [],
             ];
         }
     }
@@ -75,25 +88,31 @@ function rm_submit_v2_registration(array $event): array
     $build = rm_build_member_rows_from_responses($schema, $members_responses);
     if (!$build['ok']) {
         return [
-            'ok'          => false,
-            'error'       => $build['error'],
-            'status'      => '',
-            'pending_id'  => 0,
-            'order_number'=> '',
-            'form_errors' => $build['form_errors'],
+            'ok'           => false,
+            'error'        => $build['error'],
+            'status'       => '',
+            'pending_id'   => 0,
+            'order_number' => '',
+            'form_errors'  => $build['form_errors'],
         ];
     }
 
-    $pricing = rm_calculate_registration_pricing($event, $build['member_rows']);
-    $result = rm_v2_submit_registration($event, $build['member_rows'], $pricing, $schema);
+    $pricing = rm_calculate_registration_pricing($event, $build['member_rows'], $promotion);
+    $result = rm_v2_submit_registration(
+        $event,
+        $build['member_rows'],
+        $pricing,
+        $schema,
+        $promotion
+    );
 
     return [
-        'ok'          => $result['ok'],
-        'error'       => $result['error'],
-        'status'      => $result['status'],
-        'pending_id'  => $result['pending_id'],
-        'order_number'=> $result['order_number'],
-        'form_errors' => [],
+        'ok'           => $result['ok'],
+        'error'        => $result['error'],
+        'status'       => $result['status'],
+        'pending_id'   => $result['pending_id'],
+        'order_number' => $result['order_number'],
+        'form_errors'  => [],
     ];
 }
 
@@ -108,6 +127,10 @@ function rm_normalize_v2_registrant_row(array $registrant, ?array $header = null
 {
     $payment_status = is_array($header) ? (string) ($header['payment_status'] ?? '') : '';
     $is_paid = in_array($payment_status, ['paid', 'free'], true);
+    $event_promotion_id = is_array($header) && isset($header['event_promotion_id'])
+        ? (int) $header['event_promotion_id']
+        : 0;
+    $package_label = rm_package_label_from_header($header);
 
     return [
         'id'                     => isset($registrant['id']) ? (int) $registrant['id'] : 0,
@@ -140,6 +163,8 @@ function rm_normalize_v2_registrant_row(array $registrant, ?array $header = null
         '_payment_status'        => $payment_status,
         '_is_paid'               => $is_paid,
         '_header_total'          => is_array($header) ? (float) ($header['total_amount'] ?? 0) : 0.0,
+        '_event_promotion_id'    => $event_promotion_id > 0 ? $event_promotion_id : null,
+        '_package_label'         => $package_label,
     ];
 }
 
@@ -161,7 +186,7 @@ function rm_fetch_v2_registrants_from_db(int $event_id): array
         $wpdb->prepare(
             'SELECT r.*, h.confirmation_number, h.payment_status, h.payment_request_id,
                     h.payment_option, h.total_amount AS header_total, h.member_count,
-                    h.is_email_confirmation_sent
+                    h.is_email_confirmation_sent, h.event_promotion_id, h.pricing_snapshot
              FROM `event_registrant` r
              INNER JOIN `event_registration` h ON h.id = r.registration_id
              WHERE r.event_id = %d
@@ -185,13 +210,15 @@ function rm_fetch_v2_registrants_from_db(int $event_id): array
         }
 
         $header = [
-            'confirmation_number'      => $row['confirmation_number'] ?? '',
-            'payment_status'           => $row['payment_status'] ?? '',
-            'payment_request_id'       => $row['payment_request_id'] ?? null,
-            'payment_option'           => $row['payment_option'] ?? 'N/A',
-            'total_amount'             => $row['header_total'] ?? 0,
-            'member_count'             => $row['member_count'] ?? 1,
+            'confirmation_number'        => $row['confirmation_number'] ?? '',
+            'payment_status'             => $row['payment_status'] ?? '',
+            'payment_request_id'         => $row['payment_request_id'] ?? null,
+            'payment_option'             => $row['payment_option'] ?? 'N/A',
+            'total_amount'               => $row['header_total'] ?? 0,
+            'member_count'               => $row['member_count'] ?? 1,
             'is_email_confirmation_sent' => $row['is_email_confirmation_sent'] ?? 0,
+            'event_promotion_id'         => $row['event_promotion_id'] ?? null,
+            'pricing_snapshot'           => $row['pricing_snapshot'] ?? null,
         ];
 
         unset(
@@ -201,7 +228,9 @@ function rm_fetch_v2_registrants_from_db(int $event_id): array
             $row['payment_option'],
             $row['header_total'],
             $row['member_count'],
-            $row['is_email_confirmation_sent']
+            $row['is_email_confirmation_sent'],
+            $row['event_promotion_id'],
+            $row['pricing_snapshot']
         );
 
         $normalized[] = rm_normalize_v2_registrant_row($row, $header);
@@ -231,7 +260,7 @@ function rm_fetch_v2_registrant_by_id(int $registrant_id, int $event_id): array
         $wpdb->prepare(
             'SELECT r.*, h.confirmation_number, h.payment_status, h.payment_request_id,
                     h.payment_option, h.total_amount AS header_total, h.member_count,
-                    h.is_email_confirmation_sent
+                    h.is_email_confirmation_sent, h.event_promotion_id, h.pricing_snapshot
              FROM `event_registrant` r
              INNER JOIN `event_registration` h ON h.id = r.registration_id
              WHERE r.id = %d AND r.event_id = %d
@@ -257,6 +286,8 @@ function rm_fetch_v2_registrant_by_id(int $registrant_id, int $event_id): array
         'total_amount'               => $row['header_total'] ?? 0,
         'member_count'               => $row['member_count'] ?? 1,
         'is_email_confirmation_sent' => $row['is_email_confirmation_sent'] ?? 0,
+        'event_promotion_id'         => $row['event_promotion_id'] ?? null,
+        'pricing_snapshot'           => $row['pricing_snapshot'] ?? null,
     ];
 
     unset(
@@ -266,7 +297,9 @@ function rm_fetch_v2_registrant_by_id(int $registrant_id, int $event_id): array
         $row['payment_option'],
         $row['header_total'],
         $row['member_count'],
-        $row['is_email_confirmation_sent']
+        $row['is_email_confirmation_sent'],
+        $row['event_promotion_id'],
+        $row['pricing_snapshot']
     );
 
     return [

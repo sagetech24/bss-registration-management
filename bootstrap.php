@@ -5,6 +5,7 @@ require_once __DIR__ . '/../wp-load.php';
 require_once __DIR__ . '/includes/schema-install.php';
 require_once __DIR__ . '/includes/registration-config-service.php';
 require_once __DIR__ . '/includes/form-schema-service.php';
+require_once __DIR__ . '/includes/event-promotion-service.php';
 require_once __DIR__ . '/includes/pricing-service.php';
 require_once __DIR__ . '/includes/event-registration-service.php';
 require_once __DIR__ . '/includes/event-registrant-service.php';
@@ -24,6 +25,8 @@ require_once __DIR__ . '/includes/legacy-redirect.php';
 
 if (rm_event_registration_tables_exist() === false) {
     rm_install_event_registration_tables();
+} elseif (rm_event_promotions_schema_ready() === false) {
+    rm_install_event_promotions_schema();
 }
 
 rm_legacy_redirect_bootstrap();

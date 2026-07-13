@@ -5,9 +5,12 @@ $uses_v2 = !empty($uses_v2);
 $form_schema = is_array($form_schema ?? null) ? $form_schema : ['fields' => []];
 $is_group_mode = !empty($is_group_mode);
 $registration_config = is_array($registration_config ?? null) ? $registration_config : [];
-$group_limits = is_array($group_limits ?? null) ? $group_limits : ['min' => 1, 'max' => 1];
+$group_limits = is_array($group_limits ?? null) ? $group_limits : ['min' => 1, 'max' => 1, 'require_all_members' => false];
 $pricing_preview = is_array($pricing_preview ?? null) ? $pricing_preview : [];
 $members_input = is_array($members_input ?? null) ? $members_input : [];
+$promotion_present = is_array($promotion_present ?? null) ? $promotion_present : null;
+$active_promotion = is_array($active_promotion ?? null) ? $active_promotion : null;
+$individual_href = (string) ($individual_href ?? '');
 $input_class = 'w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none';
 $form_errors = is_array($form_errors ?? null) ? $form_errors : [];
 $success_message = (string) ($success_message ?? '');
@@ -22,6 +25,13 @@ $responses = $members_input[0] ?? rm_form_empty_responses($form_schema);
             <div class="p-4 bg-rose-50 border border-rose-200 rounded-lg text-rose-800">
                 <?php echo esc_html($error_message); ?>
             </div>
+            <?php if ($individual_href !== '') : ?>
+                <p class="mt-4 text-sm text-slate-600">
+                    <a href="<?php echo esc_url($individual_href); ?>" class="font-medium text-indigo-700 hover:text-indigo-900">
+                        Register individually instead
+                    </a>
+                </p>
+            <?php endif; ?>
         </div>
     <?php else : ?>
         <div class="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
@@ -39,6 +49,32 @@ $responses = $members_input[0] ?? rm_form_empty_responses($form_schema);
                         </div>
                     </div>
                 <?php else : ?>
+                    <?php if ($promotion_present !== null) : ?>
+                        <div class="mb-4 rounded-xl border border-indigo-200 bg-indigo-50 p-4">
+                            <p class="text-xs font-semibold uppercase tracking-wider text-indigo-600">Registration package</p>
+                            <h3 class="mt-1 text-base font-semibold text-slate-900">
+                                <?php echo esc_html($promotion_present['title']); ?>
+                            </h3>
+                            <p class="mt-1 text-sm text-slate-700">
+                                <?php echo esc_html($promotion_present['price_display']); ?>
+                                <?php if ($promotion_present['member_rule'] !== '') : ?>
+                                    <span class="text-slate-500">·</span>
+                                    <?php echo esc_html($promotion_present['member_rule']); ?>
+                                <?php endif; ?>
+                            </p>
+                            <?php if ($promotion_present['description'] !== '') : ?>
+                                <p class="mt-2 text-sm text-slate-600"><?php echo esc_html($promotion_present['description']); ?></p>
+                            <?php endif; ?>
+                            <?php if ($individual_href !== '') : ?>
+                                <p class="mt-3 text-sm">
+                                    <a href="<?php echo esc_url($individual_href); ?>" class="font-medium text-indigo-700 hover:text-indigo-900">
+                                        Register individually instead
+                                    </a>
+                                </p>
+                            <?php endif; ?>
+                        </div>
+                    <?php endif; ?>
+
                     <div class="bg-white border border-slate-200 rounded-xl shadow-sm p-6">
                         <?php if ($error_message !== '') : ?>
                             <div class="mb-5 p-4 bg-rose-50 border border-rose-200 rounded-lg text-rose-800">
@@ -51,6 +87,9 @@ $responses = $members_input[0] ?? rm_form_empty_responses($form_schema);
                         <?php else : ?>
                             <form method="post" action="<?php echo esc_url($page_url); ?>" class="space-y-5">
                                 <?php wp_nonce_field('rm_register', 'rm_register_nonce'); ?>
+                                <?php if ($active_promotion !== null) : ?>
+                                    <input type="hidden" name="event_promotion_id" value="<?php echo esc_attr((string) (int) $active_promotion['id']); ?>" />
+                                <?php endif; ?>
 
                                 <?php if ($uses_v2) : ?>
                                     <?php
@@ -125,6 +164,12 @@ $responses = $members_input[0] ?? rm_form_empty_responses($form_schema);
                                 }
                                 ?>
                             </p>
+
+                            <?php if ($promotion_present !== null) : ?>
+                                <p class="mt-2 text-xs text-indigo-700 font-medium">
+                                    Package: <?php echo esc_html($promotion_present['title']); ?>
+                                </p>
+                            <?php endif; ?>
 
                             <?php if ($uses_v2 && $is_group_mode) : ?>
                                 <p class="mt-2 text-xs text-slate-500">

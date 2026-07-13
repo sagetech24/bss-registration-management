@@ -170,6 +170,13 @@ function rm_present_registrant_row(array $registrant, bool $is_pending = false):
         'email_sent'         => $email_sent,
         'email_sent_label'   => $email_sent ? 'Yes' : 'No',
         'is_pending'         => $is_pending,
+        'package_label'      => trim((string) ($registrant['_package_label'] ?? 'Individual')) !== ''
+            ? (string) ($registrant['_package_label'] ?? 'Individual')
+            : 'Individual',
+        'event_promotion_id' => isset($registrant['_event_promotion_id']) && $registrant['_event_promotion_id']
+            ? (int) $registrant['_event_promotion_id']
+            : null,
+        'registration_id'    => isset($registrant['_registration_id']) ? (int) $registrant['_registration_id'] : 0,
     ];
 }
 
@@ -553,6 +560,103 @@ function rm_registrants_summary(array $registrants): array
     ];
 }
 
+/**
+ * Summarize registrants by package (Individual vs named promotions).
+ *
+ * @param array<int, array<string, mixed>> $registrants
+ * @return list<array{key: string, label: string, people: int, registrations: int}>
+ */
+function rm_registrants_package_summary(array $registrants): array
+{
+    $buckets = [];
+
+    foreach ($registrants as $row) {
+        if (!is_array($row)) {
+            continue;
+        }
+
+        $promotion_id = isset($row['_event_promotion_id']) ? (int) $row['_event_promotion_id'] : 0;
+        $key = $promotion_id > 0 ? (string) $promotion_id : 'individual';
+        $label = trim((string) ($row['_package_label'] ?? ''));
+        if ($label === '') {
+            $label = $promotion_id > 0 ? 'Package #' . $promotion_id : 'Individual';
+        }
+
+        if (!isset($buckets[$key])) {
+            $buckets[$key] = [
+                'key'           => $key,
+                'label'         => $label,
+                'people'        => 0,
+                'registrations' => [],
+            ];
+        }
+
+        $buckets[$key]['people']++;
+        $registration_id = isset($row['_registration_id']) ? (int) $row['_registration_id'] : 0;
+        if ($registration_id > 0) {
+            $buckets[$key]['registrations'][$registration_id] = true;
+        } else {
+            $buckets[$key]['registrations']['p_' . $buckets[$key]['people']] = true;
+        }
+    }
+
+    $out = [];
+    foreach ($buckets as $bucket) {
+        $out[] = [
+            'key'           => $bucket['key'],
+            'label'         => $bucket['label'],
+            'people'        => $bucket['people'],
+            'registrations' => count($bucket['registrations']),
+        ];
+    }
+
+    usort($out, static function (array $a, array $b): int {
+        if ($a['key'] === 'individual') {
+            return -1;
+        }
+        if ($b['key'] === 'individual') {
+            return 1;
+        }
+
+        return strcmp($a['label'], $b['label']);
+    });
+
+    return $out;
+}
+
+/**
+ * @param array<int, array<string, mixed>> $registrants
+ * @return array<int, array<string, mixed>>
+ */
+function rm_filter_registrants_by_package(array $registrants, string $package_filter): array
+{
+    if ($package_filter === '' || $package_filter === 'all') {
+        return $registrants;
+    }
+
+    $filtered = [];
+    foreach ($registrants as $row) {
+        if (!is_array($row)) {
+            continue;
+        }
+
+        $promotion_id = isset($row['_event_promotion_id']) ? (int) $row['_event_promotion_id'] : 0;
+
+        if ($package_filter === 'individual') {
+            if ($promotion_id < 1) {
+                $filtered[] = $row;
+            }
+            continue;
+        }
+
+        if (ctype_digit($package_filter) && $promotion_id === (int) $package_filter) {
+            $filtered[] = $row;
+        }
+    }
+
+    return $filtered;
+}
+
 function rm_is_event_not_found(string $event_code, ?array $event, string $error_message): bool
 {
     if ($event_code === '' || $event !== null) {
@@ -711,6 +815,7 @@ function rm_build_registrants_context(array $events_by_year, string $requested_e
 function rm_build_event_registrants_data(): array
 {
     $event_id = rm_get_event_id();
+    $package_filter = rm_get_package_filter();
 
     if ($event_id < 1) {
         return [
@@ -723,16 +828,40 @@ function rm_build_event_registrants_data(): array
                 'pending_count' => 0,
                 'total_revenue' => 0.0,
             ],
+            'package_summary'     => [],
+            'package_filter'      => $package_filter,
+            'package_options'     => [
+                ['value' => 'all', 'label' => 'All packages'],
+                ['value' => 'individual', 'label' => 'Individual'],
+            ],
         ];
     }
 
     $event = rm_get_event_by_id($event_id);
     $db_fetch = rm_fetch_registrants_from_db($event_id, $event);
+    $all_registrants = $db_fetch['error'] === '' ? $db_fetch['registrants'] : [];
+    $package_summary = rm_registrants_package_summary($all_registrants);
+    $filtered_registrants = rm_filter_registrants_by_package($all_registrants, $package_filter);
+
+    $package_options = [
+        ['value' => 'all', 'label' => 'All packages'],
+        ['value' => 'individual', 'label' => 'Individual'],
+    ];
+    foreach ($package_summary as $bucket) {
+        if ($bucket['key'] === 'individual') {
+            continue;
+        }
+        $package_options[] = [
+            'value' => $bucket['key'],
+            'label' => $bucket['label'],
+        ];
+    }
+
     $rows = [];
 
     if ($db_fetch['error'] === '') {
         $payment_request_ids = [];
-        foreach ($db_fetch['registrants'] as $registrant) {
+        foreach ($filtered_registrants as $registrant) {
             if (!is_array($registrant)) {
                 continue;
             }
@@ -748,7 +877,7 @@ function rm_build_event_registrants_data(): array
             $payment_request_ids
         );
 
-        foreach ($db_fetch['registrants'] as $registrant) {
+        foreach ($filtered_registrants as $registrant) {
             if (!is_array($registrant)) {
                 continue;
             }
@@ -766,7 +895,10 @@ function rm_build_event_registrants_data(): array
         'ok'                  => $db_fetch['error'] === '',
         'error'               => $db_fetch['error'],
         'registrant_rows'     => $rows,
-        'registrants_summary' => rm_registrants_summary($db_fetch['registrants']),
+        'registrants_summary' => rm_registrants_summary($filtered_registrants),
+        'package_summary'     => $package_summary,
+        'package_filter'      => $package_filter,
+        'package_options'     => $package_options,
     ];
 }
 

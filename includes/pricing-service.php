@@ -64,25 +64,42 @@ function rm_pricing_base_price(array $event): array
 }
 
 /**
+ * When a package promotion is selected, package_price is authoritative —
+ * early-bird bss_specials is not stacked on top.
+ *
  * @param array<string, mixed> $event
  * @param list<array<string, mixed>> $members
+ * @param array<string, mixed>|null $promotion
  * @return array{
  *     subtotal: float,
  *     discount_total: float,
  *     total_amount: float,
  *     promo_id: int|null,
+ *     event_promotion_id: int|null,
  *     base_price: float,
  *     members: list<array{index: int, role: string, unit_price: float, discount_percent: float}>,
  *     pricing_snapshot: array<string, mixed>
  * }
  */
-function rm_calculate_registration_pricing(array $event, array $members): array
+function rm_calculate_registration_pricing(array $event, array $members, ?array $promotion = null): array
 {
-    $config = rm_parse_registration_config($event);
+    $config = rm_effective_registration_config($event, $promotion);
     $mode = $config['mode'];
     $member_count = count($members);
-    $base = rm_pricing_base_price($event);
-    $base_price = $base['base_price'];
+
+    if ($promotion !== null) {
+        $base_price = (float) $promotion['package_price'];
+        $base = [
+            'base_price'  => $base_price,
+            'promo_id'    => null,
+            'promo_note'  => '',
+            'event_price' => rm_event_registration_price($event),
+            'using_promo' => false,
+        ];
+    } else {
+        $base = rm_pricing_base_price($event);
+        $base_price = $base['base_price'];
+    }
 
     $priced_members = [];
     $subtotal = 0.0;
@@ -111,7 +128,6 @@ function rm_calculate_registration_pricing(array $event, array $members): array
         foreach ($members as $index => $member) {
             $slot = $slots[$index] ?? ['role' => 'member', 'discount_percent' => 0.0];
             $discount_percent = (float) ($slot['discount_percent'] ?? 0.0);
-            $unit_before = $base_price;
             $unit_price = round($base_price * (1 - $discount_percent / 100), 2);
             $slot_subtotal += $base_price;
             $total += $unit_price;
@@ -139,32 +155,42 @@ function rm_calculate_registration_pricing(array $event, array $members): array
         ];
     }
 
+    $event_promotion_id = $promotion !== null ? (int) ($promotion['id'] ?? 0) : null;
+    if ($event_promotion_id !== null && $event_promotion_id < 1) {
+        $event_promotion_id = null;
+    }
+
     $pricing_snapshot = [
-        'mode'           => $mode,
-        'base_price'     => $base_price,
-        'event_price'    => $base['event_price'],
-        'promo_id'       => $base['promo_id'],
-        'promo_note'     => $base['promo_note'],
-        'using_promo'    => $base['using_promo'],
-        'member_count'   => $member_count,
-        'pricing_model'  => $config['pricing']['model'] ?? 'flat',
-        'group'          => $config['group'],
-        'slots'          => $config['pricing']['slots'] ?? [],
-        'members'        => $priced_members,
-        'subtotal'       => round($subtotal, 2),
-        'discount_total' => round($discount_total, 2),
-        'total_amount'   => round($total, 2),
-        'calculated_at'  => current_time('mysql'),
+        'mode'                => $mode,
+        'base_price'          => $base_price,
+        'event_price'         => $base['event_price'],
+        'promo_id'            => $base['promo_id'],
+        'promo_note'          => $base['promo_note'],
+        'using_promo'         => $base['using_promo'],
+        'event_promotion_id'  => $event_promotion_id,
+        'package_slug'        => $promotion !== null ? (string) ($promotion['slug'] ?? '') : null,
+        'package_title'       => $promotion !== null ? (string) ($promotion['title'] ?? '') : null,
+        'package_price'       => $promotion !== null ? (float) $promotion['package_price'] : null,
+        'member_count'        => $member_count,
+        'pricing_model'       => $config['pricing']['model'] ?? 'flat',
+        'group'               => $config['group'],
+        'slots'               => $config['pricing']['slots'] ?? [],
+        'members'             => $priced_members,
+        'subtotal'            => round($subtotal, 2),
+        'discount_total'      => round($discount_total, 2),
+        'total_amount'        => round($total, 2),
+        'calculated_at'       => current_time('mysql'),
     ];
 
     return [
-        'subtotal'         => round($subtotal, 2),
-        'discount_total'   => round($discount_total, 2),
-        'total_amount'     => round($total, 2),
-        'promo_id'         => $base['promo_id'],
-        'base_price'       => $base_price,
-        'members'          => $priced_members,
-        'pricing_snapshot' => $pricing_snapshot,
+        'subtotal'            => round($subtotal, 2),
+        'discount_total'      => round($discount_total, 2),
+        'total_amount'        => round($total, 2),
+        'promo_id'            => $base['promo_id'],
+        'event_promotion_id'  => $event_promotion_id,
+        'base_price'          => $base_price,
+        'members'             => $priced_members,
+        'pricing_snapshot'    => $pricing_snapshot,
     ];
 }
 

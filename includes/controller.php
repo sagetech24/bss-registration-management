@@ -25,21 +25,33 @@ function rm_build_register_context(): array
     }
 
     $event_code = rm_get_event_code();
-    $page_url = rm_registration_url($event_code !== '' ? ['event_code' => $event_code] : []);
+    $package_slug = rm_get_registration_package_slug();
+    $url_args = [];
+    if ($event_code !== '') {
+        $url_args['event_code'] = $event_code;
+    }
+    if ($package_slug !== '') {
+        $url_args['package'] = $package_slug;
+    }
+    $page_url = rm_registration_url($url_args);
     $form_input = rm_get_registration_form_input();
 
     $context = [
-        'view_action'       => 'register',
-        'is_public_layout'  => true,
-        'page_url'          => $page_url,
-        'event_code'        => $event_code,
-        'event'             => null,
-        'event_present'     => null,
-        'form_input'        => $form_input,
-        'form_errors'       => [],
-        'success_message'   => '',
-        'order_number'      => '',
-        'error_message'     => '',
+        'view_action'         => 'register',
+        'is_public_layout'    => true,
+        'page_url'            => $page_url,
+        'event_code'          => $event_code,
+        'package_slug'        => $package_slug,
+        'event'               => null,
+        'event_present'       => null,
+        'active_promotion'    => null,
+        'promotion_present'   => null,
+        'form_input'          => $form_input,
+        'form_errors'         => [],
+        'success_message'     => '',
+        'order_number'        => '',
+        'error_message'       => '',
+        'individual_href'     => '',
     ];
 
     if ($event_code === '') {
@@ -61,16 +73,40 @@ function rm_build_register_context(): array
         return $context;
     }
 
-    $context['event'] = $event_fetch['event'];
-    $context['event_present'] = rm_present_registration_event($event_fetch['event']);
-    $context['uses_v2'] = rm_event_uses_v2_registration($event_fetch['event']);
-    $context['registration_config'] = rm_parse_registration_config($event_fetch['event']);
-    $context['form_schema'] = rm_parse_form_schema($event_fetch['event']);
-    $context['is_group_mode'] = rm_registration_is_group_mode($event_fetch['event']);
-    $context['group_limits'] = rm_registration_group_limits($event_fetch['event']);
+    $event = $event_fetch['event'];
+    $context['event'] = $event;
+    $context['event_present'] = rm_present_registration_event($event);
+    $context['uses_v2'] = rm_event_uses_v2_registration($event);
+    $context['individual_href'] = rm_registration_url(['event_code' => $event_code]);
+
+    $promotion = null;
+    if ($context['uses_v2']) {
+        $resolved = rm_resolve_registration_promotion($event);
+        if (!$resolved['ok']) {
+            $context['error_message'] = $resolved['error'];
+            $context['event_present'] = null;
+
+            return $context;
+        }
+        $promotion = $resolved['promotion'];
+    } elseif ($package_slug !== '') {
+        $context['error_message'] = 'This registration package is not available.';
+        $context['event_present'] = null;
+
+        return $context;
+    }
+
+    $context['active_promotion'] = $promotion;
+    $context['promotion_present'] = $promotion !== null
+        ? rm_present_event_promotion($promotion)
+        : null;
+    $context['registration_config'] = rm_effective_registration_config($event, $promotion);
+    $context['form_schema'] = rm_parse_form_schema($event);
+    $context['is_group_mode'] = rm_effective_is_group_mode($event, $promotion);
+    $context['group_limits'] = rm_effective_group_limits($event, $promotion);
     $context['pricing_preview'] = rm_present_registration_pricing(
-        $event_fetch['event'],
-        rm_calculate_registration_pricing($event_fetch['event'], [[]])
+        $event,
+        rm_calculate_registration_pricing($event, [[]], $promotion)
     );
     $context['members_input'] = [];
 
@@ -114,7 +150,7 @@ function rm_build_register_context(): array
         return $context;
     }
 
-    $result = rm_submit_registration($event_fetch['event'], $form_input);
+    $result = rm_submit_registration($event, $form_input);
     if (!$result['ok']) {
         $context['error_message'] = $result['error'];
         if (!empty($result['form_errors']) && is_array($result['form_errors'])) {
@@ -135,7 +171,7 @@ function rm_build_register_context(): array
     if ($result['status'] === 'pending_payment' && $result['pending_id'] > 0) {
         $checkout = rm_payment_initiate_checkout(
             $result['pending_id'],
-            $event_fetch['event'],
+            $event,
             $checkout_registrant,
             $event_code
         );
@@ -159,12 +195,14 @@ function rm_build_register_context(): array
         $result['order_number'],
         $result['status']
     );
-    wp_safe_redirect(
-        rm_registration_url([
-            'event_code' => $event_code,
-            'registered' => $flash_key,
-        ])
-    );
+    $redirect_args = [
+        'event_code' => $event_code,
+        'registered' => $flash_key,
+    ];
+    if ($package_slug !== '') {
+        $redirect_args['package'] = $package_slug;
+    }
+    wp_safe_redirect(rm_registration_url($redirect_args));
     exit;
 }
 

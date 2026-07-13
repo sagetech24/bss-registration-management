@@ -101,6 +101,39 @@ function rm_get_event_code(): string
         : '';
 }
 
+function rm_get_registration_package_slug(): string
+{
+    if (!isset($_GET['package'])) {
+        return '';
+    }
+
+    return rm_sanitize_package_slug(
+        sanitize_text_field(wp_unslash((string) $_GET['package']))
+    );
+}
+
+function rm_get_package_filter(): string
+{
+    if (!isset($_GET['package_filter'])) {
+        return 'all';
+    }
+
+    $filter = sanitize_text_field(wp_unslash((string) $_GET['package_filter']));
+    if ($filter === '' || $filter === 'all') {
+        return 'all';
+    }
+
+    if ($filter === 'individual') {
+        return 'individual';
+    }
+
+    if (ctype_digit($filter)) {
+        return $filter;
+    }
+
+    return 'all';
+}
+
 function rm_get_event_id(): int
 {
     if (!isset($_GET['event_id'])) {

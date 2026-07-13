@@ -1,12 +1,18 @@
 <?php
 $form_schema = is_array($form_schema ?? null) ? $form_schema : ['fields' => []];
-$group_limits = is_array($group_limits ?? null) ? $group_limits : ['min' => 1, 'max' => 1];
+$group_limits = is_array($group_limits ?? null) ? $group_limits : ['min' => 1, 'max' => 1, 'require_all_members' => false];
 $registration_config = is_array($registration_config ?? null) ? $registration_config : [];
 $pricing_preview = is_array($pricing_preview ?? null) ? $pricing_preview : [];
 $members_input = is_array($members_input ?? null) ? $members_input : [];
+$active_promotion = is_array($active_promotion ?? null) ? $active_promotion : null;
 $mode = (string) ($registration_config['mode'] ?? 'group_flat');
+$require_all_members = !empty($group_limits['require_all_members']);
 $schema_json = wp_json_encode($form_schema);
-$limits_json = wp_json_encode($group_limits);
+$limits_json = wp_json_encode([
+    'min'                 => (int) ($group_limits['min'] ?? 1),
+    'max'                 => (int) ($group_limits['max'] ?? 1),
+    'require_all_members' => $require_all_members,
+]);
 $members_json = wp_json_encode($members_input !== [] ? $members_input : []);
 $pricing_json = wp_json_encode($pricing_preview);
 $input_class = 'w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none';
@@ -33,6 +39,9 @@ $input_class = 'w-full rounded-lg border border-slate-300 bg-white px-3 py-2 tex
 
     <form method="post" action="<?php echo esc_url($page_url); ?>" @submit="prepareSubmit">
         <?php wp_nonce_field('rm_register', 'rm_register_nonce'); ?>
+        <?php if ($active_promotion !== null) : ?>
+            <input type="hidden" name="event_promotion_id" value="<?php echo esc_attr((string) (int) $active_promotion['id']); ?>" />
+        <?php endif; ?>
         <input type="hidden" name="members_json" :value="serializedMembers" />
 
         <div x-show="step === 0" class="space-y-4">
@@ -103,8 +112,21 @@ $input_class = 'w-full rounded-lg border border-slate-300 bg-white px-3 py-2 tex
             </template>
 
             <div class="flex gap-3">
-                <button type="button" x-show="members.length < limits.max" @click="addMember()" class="rounded-lg border border-indigo-200 bg-indigo-50 px-4 py-2 text-sm font-medium text-indigo-700 hover:bg-indigo-100">Add member</button>
-                <button type="button" x-show="members.length > limits.min" @click="removeMember()" class="rounded-lg border border-slate-200 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">Remove last member</button>
+                <button
+                    type="button"
+                    x-show="!limits.require_all_members && members.length < limits.max"
+                    @click="addMember()"
+                    class="rounded-lg border border-indigo-200 bg-indigo-50 px-4 py-2 text-sm font-medium text-indigo-700 hover:bg-indigo-100"
+                >Add member</button>
+                <button
+                    type="button"
+                    x-show="!limits.require_all_members && members.length > limits.min"
+                    @click="removeMember()"
+                    class="rounded-lg border border-slate-200 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+                >Remove last member</button>
+                <p x-show="limits.require_all_members" class="text-sm text-slate-500">
+                    This package requires exactly <span x-text="limits.max"></span> registrant(s).
+                </p>
             </div>
 
             <div class="pt-2 flex justify-between">
@@ -145,16 +167,20 @@ function rmRegisterWizard() {
         step: 0,
         stepLabels: ['Leader', 'Members', 'Summary'],
         schema: { fields: [] },
-        limits: { min: 1, max: 1 },
+        limits: { min: 1, max: 1, require_all_members: false },
         members: [],
         serializedMembers: '[]',
         pricing: {},
         init(schema, limits, members, pricing) {
             this.schema = schema || { fields: [] };
-            this.limits = limits || { min: 1, max: 1 };
+            this.limits = Object.assign({ min: 1, max: 1, require_all_members: false }, limits || {});
             this.pricing = pricing || {};
             this.members = Array.isArray(members) && members.length ? members : [this.emptyMember()];
-            while (this.members.length < this.limits.min) this.addMember();
+            const target = this.limits.require_all_members ? this.limits.max : this.limits.min;
+            while (this.members.length < target) this.addMember();
+            if (this.limits.require_all_members && this.members.length > this.limits.max) {
+                this.members = this.members.slice(0, this.limits.max);
+            }
         },
         emptyMember() {
             const member = {};
@@ -177,6 +203,7 @@ function rmRegisterWizard() {
             if (this.members.length < this.limits.max) this.members.push(this.emptyMember());
         },
         removeMember() {
+            if (this.limits.require_all_members) return;
             if (this.members.length > this.limits.min) this.members.pop();
         },
         validateMember(member) {
@@ -197,6 +224,10 @@ function rmRegisterWizard() {
             this.step = 1;
         },
         nextToSummary() {
+            if (this.limits.require_all_members && this.members.length !== this.limits.max) {
+                alert('This package requires exactly ' + this.limits.max + ' registrant(s).');
+                return;
+            }
             for (let i = 0; i < this.members.length; i++) {
                 if (!this.validateMember(this.members[i])) {
                     alert('Please complete all required fields for member ' + (i + 1) + '.');
@@ -216,6 +247,7 @@ function rmRegisterWizard() {
             return price > 0 ? '$' + price.toFixed(2) : 'FREE';
         },
         get totalDisplay() {
+            if (this.pricing.total_display) return this.pricing.total_display;
             let total = 0;
             for (let i = 0; i < this.members.length; i++) {
                 const item = (this.pricing.member_pricing || [])[i];

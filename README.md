@@ -15,6 +15,7 @@ Event registration and payment module for Bible Society Singapore (BSS). Runs as
 - WordPress (parent BSS installation)
 - MySQL tables: `bss_events`, `bss_registrant`, `bss_registrant_pendings`
 - v2 tables (auto-installed on bootstrap): `event_registration`, `event_registrant`, `event_registration_pendings`, `event_registrant_pendings`
+- Package promotions table (auto-installed): `event_promotions` (+ `event_promotion_id` on registration headers)
 - BSS REST API access
 
 ## Installation
@@ -29,7 +30,7 @@ Event registration and payment module for Bible Society Singapore (BSS). Runs as
 php -r "require 'registration-manager/bootstrap.php'; print_r(rm_install_event_registration_tables());"
 ```
 
-Or apply `migrations/001_event_registration_tables.sql` directly in MySQL.
+Or apply `migrations/001_event_registration_tables.sql` and `migrations/002_event_promotions.sql` directly in MySQL.
 
 ```
 wordpress-root/
@@ -72,11 +73,27 @@ Base URL: `/registration-manager/`
 | *(default)* | Events dashboard |
 | `action=get-event-registrants&event_code=...&event_id=...` | Registrants for an event |
 | `action=get-event&event_code=...` | Event page (reserved) |
-| `action=register&event_code=...` | Public registration form |
+| `action=register&event_code=...` | Public registration form (default / individual) |
+| `action=register&event_code=...&package={slug}` | Public form for a named registration package |
 
 Legacy group redirect entry: `/registration-manager/redirect.php?e={event_id}` (for v2 group events)
 
 Webhook endpoint: `/registration-manager/webhook.php` (POST, production only)
+
+### Registration package URLs
+
+Packages are optional alternate entry points. The default URL (no `package` param) always remains available for individual / default registration.
+
+```
+/registration-manager/?action=register&event_code={programCode}&package=couple-promo
+```
+
+| Intent | URL |
+|--------|-----|
+| Individual / default | `?action=register&event_code=ABC123` |
+| Named package | `?action=register&event_code=ABC123&package={slug}` |
+
+Package rows live in `event_promotions`. When a package is selected, its `package_price` is authoritative (early-bird `bss_specials` is not stacked). The checkout header stores `event_promotion_id` (null = individual/default).
 
 ### HitPay dashboard webhook payload
 
@@ -131,6 +148,32 @@ Set `settings.registration.version = 2` or include `settings.registration.mode`.
 
 `minimal`, `standard`, `full` — expanded server-side into `form.fields`. Custom fields use `source: "custom"` and are stored in `custom_responses` JSON.
 
+### Registration packages (`event_promotions`)
+
+Named packages (Couple, Company, etc.) are stored in `event_promotions` and selected via the `package` URL param.
+
+| Column | Purpose |
+|--------|---------|
+| `slug` | URL param value (`couple-promo`) |
+| `title` | Display name |
+| `registration_mode` | `individual` / `group_flat` / `group_per_head` |
+| `member_min` / `member_max` | Group size rules |
+| `require_all_members` | `1` = all slots required at checkout; `0` = fill-later |
+| `package_price` | Fixed package price (authoritative when package is used) |
+| `pricing_config` | JSON slots for `group_per_head` |
+
+Example insert:
+
+```sql
+INSERT INTO event_promotions
+  (event_id, slug, title, registration_mode, member_min, member_max, require_all_members, package_price, is_active)
+VALUES
+  (519, 'couple-promo', 'Couple Registration Package Promo', 'group_flat', 2, 2, 1, 180.00, 1),
+  (519, 'company-10', 'Company Package Promo', 'group_flat', 1, 10, 0, 800.00, 1);
+```
+
+Staff dashboard: event cards list package links; registrants view shows a package badge, filter, and per-package summary counts.
+
 ### Coexistence
 
 - **No migration** of historical `bss_registrant` rows
@@ -149,10 +192,11 @@ For v2 group events, redirect legacy theme URLs to registration-manager:
 
 ```
 includes/
-  schema-install.php           v2 table DDL installer
+  schema-install.php           v2 + event_promotions DDL installer
   registration-config-service.php  Parse settings.registration
   form-schema-service.php      Dynamic form schema + validation
-  pricing-service.php          Server-side pricing (incl. early bird)
+  event-promotion-service.php  Package resolve / merge / present
+  pricing-service.php          Server-side pricing (incl. early bird + packages)
   event-registration-service.php   v2 header pending/confirmed flow
   event-registrant-service.php     v2 line items + dashboard normalize
   legacy-redirect.php          Legacy group URL → registration-manager

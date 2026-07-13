@@ -19,7 +19,8 @@ function rm_v2_submit_registration(
     array $event,
     array $member_rows,
     array $pricing,
-    array $form_schema
+    array $form_schema,
+    ?array $promotion = null
 ): array {
     $event_id = isset($event['id']) ? absint($event['id']) : 0;
     $event_gate = rm_validate_event_registration($event_id);
@@ -27,8 +28,8 @@ function rm_v2_submit_registration(
         return rm_v2_submit_error($event_gate['error']);
     }
 
-    $config = rm_parse_registration_config($event);
-    $limits = rm_registration_group_limits($event);
+    $config = rm_effective_registration_config($event, $promotion);
+    $limits = rm_effective_group_limits($event, $promotion);
     $member_count = count($member_rows);
 
     if ($member_count < $limits['min']) {
@@ -39,31 +40,45 @@ function rm_v2_submit_registration(
         return rm_v2_submit_error('No more than ' . $limits['max'] . ' member(s) are allowed.');
     }
 
+    if (!empty($limits['require_all_members']) && $member_count !== $limits['max']) {
+        return rm_v2_submit_error(
+            'This package requires exactly ' . $limits['max'] . ' registrant(s).'
+        );
+    }
+
     $confirmation_number = rm_generate_confirmation_number();
     $primary_email = '';
     if (isset($member_rows[0]['core']['email'])) {
         $primary_email = trim((string) $member_rows[0]['core']['email']);
     }
 
+    $event_promotion_id = null;
+    if ($promotion !== null && !empty($promotion['id'])) {
+        $event_promotion_id = (int) $promotion['id'];
+    } elseif (!empty($pricing['event_promotion_id'])) {
+        $event_promotion_id = (int) $pricing['event_promotion_id'];
+    }
+
     $header = [
-        'event_id'                 => $event_id,
-        'registration_mode'        => $config['mode'],
-        'confirmation_number'      => $confirmation_number,
-        'member_count'             => $member_count,
-        'subtotal'                 => $pricing['subtotal'],
-        'discount_total'           => $pricing['discount_total'],
-        'total_amount'             => $pricing['total_amount'],
-        'pricing_snapshot'         => wp_json_encode($pricing['pricing_snapshot']),
-        'form_schema_snapshot'     => wp_json_encode($form_schema['fields']),
-        'promo_id'                 => $pricing['promo_id'],
-        'payment_status'           => $pricing['total_amount'] > 0 ? 'pending' : 'free',
-        'payment_request_id'       => null,
-        'payment_option'           => 'N/A',
-        'primary_email'            => $primary_email,
-        'primary_order_number'     => '',
+        'event_id'                   => $event_id,
+        'registration_mode'          => $config['mode'],
+        'confirmation_number'        => $confirmation_number,
+        'member_count'               => $member_count,
+        'subtotal'                   => $pricing['subtotal'],
+        'discount_total'             => $pricing['discount_total'],
+        'total_amount'               => $pricing['total_amount'],
+        'pricing_snapshot'           => wp_json_encode($pricing['pricing_snapshot']),
+        'form_schema_snapshot'       => wp_json_encode($form_schema['fields']),
+        'promo_id'                   => $pricing['promo_id'],
+        'event_promotion_id'         => $event_promotion_id,
+        'payment_status'             => $pricing['total_amount'] > 0 ? 'pending' : 'free',
+        'payment_request_id'         => null,
+        'payment_option'             => 'N/A',
+        'primary_email'              => $primary_email,
+        'primary_order_number'       => '',
         'is_email_confirmation_sent' => 0,
-        'created_at'               => current_time('mysql'),
-        'updated_at'               => current_time('mysql'),
+        'created_at'                 => current_time('mysql'),
+        'updated_at'                 => current_time('mysql'),
     ];
 
     if ($pricing['total_amount'] <= 0) {

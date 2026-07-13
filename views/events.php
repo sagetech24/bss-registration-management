@@ -176,6 +176,28 @@
                                                 Registration Page
                                             </a>
                                         </div>
+                                        <?php if (!empty($card['package_urls']) && is_array($card['package_urls'])) : ?>
+                                            <div class="border-t border-slate-100 px-4 pb-4 pt-2 space-y-1">
+                                                <p class="text-[10px] font-semibold uppercase tracking-wider text-slate-400">Package links</p>
+                                                <?php foreach ($card['package_urls'] as $package_url) : ?>
+                                                    <?php if (!is_array($package_url)) {
+                                                        continue;
+                                                    } ?>
+                                                    <a
+                                                        href="<?php echo esc_url((string) ($package_url['href'] ?? '')); ?>"
+                                                        class="block text-[11px] text-indigo-700 hover:text-indigo-900 truncate"
+                                                        target="_blank"
+                                                        rel="noopener noreferrer"
+                                                        title="<?php echo esc_attr((string) ($package_url['href'] ?? '')); ?>"
+                                                    >
+                                                        <?php echo esc_html((string) ($package_url['title'] ?? 'Package')); ?>
+                                                        <?php if (!empty($package_url['price_display'])) : ?>
+                                                            <span class="text-slate-400">(<?php echo esc_html((string) $package_url['price_display']); ?>)</span>
+                                                        <?php endif; ?>
+                                                    </a>
+                                                <?php endforeach; ?>
+                                            </div>
+                                        <?php endif; ?>
                                     </div>
                                 </article>
                             <?php endforeach; ?>
