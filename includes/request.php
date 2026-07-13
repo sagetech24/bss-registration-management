@@ -244,3 +244,30 @@ function rm_get_registrant_id(): int
 
     return absint(wp_unslash((string) $_GET['registrant_id']));
 }
+
+/**
+ * @return array<string, string>
+ */
+function rm_event_profile_tabs(): array
+{
+    return [
+        'packages'    => 'Promotion Packages',
+        'promo-codes' => 'Promo Codes',
+        'registrants' => 'Registrants',
+        'settings'    => 'Event Settings',
+    ];
+}
+
+function rm_get_event_profile_tab(): string
+{
+    $tabs = rm_event_profile_tabs();
+    $default = 'packages';
+
+    if (!isset($_GET['tab'])) {
+        return $default;
+    }
+
+    $tab = sanitize_key(wp_unslash((string) $_GET['tab']));
+
+    return array_key_exists($tab, $tabs) ? $tab : $default;
+}

@@ -9,12 +9,17 @@ function rm_event_profile_url(string $event_code, int $event_id = 0, array $extr
         [
             'action'     => 'get-event-profile',
             'event_code' => $event_code,
+            'tab'        => rm_get_event_profile_tab(),
         ],
         $extra
     );
 
     if ($event_id > 0) {
         $args['event_id'] = $event_id;
+    }
+
+    if (isset($args['tab']) && !array_key_exists((string) $args['tab'], rm_event_profile_tabs())) {
+        $args['tab'] = 'packages';
     }
 
     return add_query_arg($args, rm_page_url());
@@ -133,19 +138,24 @@ function rm_handle_event_profile_post(): void
         exit;
     }
 
-    $result = [
-        'ok'    => false,
-        'error' => 'Unknown action.',
-    ];
-
     if ($rm_action === 'save_registration_settings') {
         $result = rm_handle_save_registration_settings_post($event_id);
+        $redirect_tab = 'settings';
     } elseif ($rm_action === 'save_promotion') {
         $result = rm_handle_save_promotion_post($event_id);
+        $redirect_tab = 'packages';
     } elseif ($rm_action === 'deactivate_promotion') {
         $result = rm_handle_set_promotion_active_post($event_id, false);
+        $redirect_tab = 'packages';
     } elseif ($rm_action === 'activate_promotion') {
         $result = rm_handle_set_promotion_active_post($event_id, true);
+        $redirect_tab = 'packages';
+    } else {
+        $result = [
+            'ok'    => false,
+            'error' => 'Unknown action.',
+        ];
+        $redirect_tab = rm_get_event_profile_tab();
     }
 
     $flash = rm_store_event_profile_flash(
@@ -160,7 +170,10 @@ function rm_handle_event_profile_post(): void
         $event_code = is_array($event) ? trim((string) ($event['programCode'] ?? '')) : '';
     }
 
-    wp_safe_redirect(rm_event_profile_url($event_code, $event_id, ['profile_flash' => $flash]));
+    wp_safe_redirect(rm_event_profile_url($event_code, $event_id, [
+        'profile_flash' => $flash,
+        'tab'           => $redirect_tab,
+    ]));
     exit;
 }
 
@@ -386,6 +399,30 @@ function rm_build_event_profile_context(array $events_by_year, string $requested
         $registrants_args['event_id'] = $event_id;
     }
 
+    $registrants_api_args = [
+        'action' => 'event-registrants-data',
+    ];
+    if ($event_id > 0) {
+        $registrants_api_args['event_id'] = $event_id;
+    }
+    if ($selected_event_code !== '') {
+        $registrants_api_args['event_code'] = $selected_event_code;
+    }
+
+    $payment_details_args = [
+        'action' => 'registrant-payment-details',
+    ];
+    if ($event_id > 0) {
+        $payment_details_args['event_id'] = $event_id;
+    }
+
+    $profile_api_args = [
+        'action' => 'registrant-profile',
+    ];
+    if ($event_id > 0) {
+        $profile_api_args['event_id'] = $event_id;
+    }
+
     $summary = [
         'total'         => 0,
         'paid_count'    => 0,
@@ -434,12 +471,16 @@ function rm_build_event_profile_context(array $events_by_year, string $requested
         ? '$' . number_format_i18n($price_num, 2)
         : 'FREE';
 
+    $profile_tab = rm_get_event_profile_tab();
+
     return [
         'selected_event'              => $selected_event,
         'selected_event_code'         => $selected_event_code,
         'selected_event_id'           => $event_id,
         'event_not_found'             => false,
         'profile_error'               => '',
+        'profile_tab'                 => $profile_tab,
+        'profile_tabs'                => rm_event_profile_tabs(),
         'uses_v2'                     => $uses_v2,
         'registration_config'         => $registration_config,
         'registration_config_present' => rm_present_registration_config($registration_config),
@@ -450,8 +491,11 @@ function rm_build_event_profile_context(array $events_by_year, string $requested
         'event_card'                  => $card,
         'event_is_free'               => rm_event_is_free($selected_event),
         'event_price_display'         => $price_display,
-        'registrants_href'            => add_query_arg($registrants_args, $page_url),
+        'registrants_href'            => rm_event_profile_url($selected_event_code, $event_id, ['tab' => 'registrants']),
         'registration_href'           => $card['registration_href'],
+        'registrants_api_url'         => add_query_arg($registrants_api_args, rm_page_url()),
+        'payment_details_api_url'     => add_query_arg($payment_details_args, rm_page_url()),
+        'profile_api_url'             => add_query_arg($profile_api_args, rm_page_url()),
         'profile_flash'               => $flash,
         'registration_modes'          => rm_registration_modes(),
         'form_presets'                => rm_form_presets(),
