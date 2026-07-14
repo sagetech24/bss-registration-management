@@ -237,14 +237,9 @@ function rm_pricing_expand_slots(array $config, int $member_count): array
  */
 function rm_present_registration_pricing(array $event, array $pricing): array
 {
-    $decimals = floor($pricing['total_amount']) === $pricing['total_amount'] ? 0 : 2;
-    $total_display = $pricing['total_amount'] > 0
-        ? '$' . number_format_i18n($pricing['total_amount'], $decimals)
-        : 'FREE';
-
-    $base_display = $pricing['base_price'] > 0
-        ? '$' . number_format_i18n($pricing['base_price'], $decimals)
-        : 'FREE';
+    $currency = rm_registration_currency($event);
+    $total_display = rm_format_currency($pricing['total_amount'], $currency);
+    $base_display = rm_format_currency($pricing['base_price'], $currency);
 
     return [
         'total_amount'   => $pricing['total_amount'],

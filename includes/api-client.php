@@ -108,6 +108,27 @@ function rm_fetch_event(string $event_code): array
 
     $result = rm_api_get('get-event', ['event_code' => $event_code]);
 
+    if ($result['ok']) {
+        $event = is_array($result['data']) ? $result['data'] : null;
+        if (is_array($event) && $event !== []) {
+            return [
+                'event' => $event,
+                'error' => '',
+            ];
+        }
+    }
+
+    // Fallback: WordPress CPT events (long-term replacement for bss_events).
+    if (function_exists('rm_get_cpt_event_by_code')) {
+        $cpt_event = rm_get_cpt_event_by_code($event_code);
+        if (is_array($cpt_event) && $cpt_event !== []) {
+            return [
+                'event' => $cpt_event,
+                'error' => '',
+            ];
+        }
+    }
+
     if (!$result['ok']) {
         return [
             'event' => null,
@@ -115,10 +136,8 @@ function rm_fetch_event(string $event_code): array
         ];
     }
 
-    $event = is_array($result['data']) ? $result['data'] : null;
-
     return [
-        'event' => $event,
+        'event' => null,
         'error' => '',
     ];
 }

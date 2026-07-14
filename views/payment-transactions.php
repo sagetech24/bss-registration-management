@@ -114,9 +114,10 @@ document.addEventListener('alpine:init', () => {
             this.modalOpen = false;
             this.eventModalOpen = false;
         },
-        formatAmount(value) {
+        formatAmount(value, currency) {
             const amount = Number(value || 0);
-            return '$' + amount.toLocaleString(undefined, {
+            const cur = currency || 'SGD';
+            return cur + ' ' + amount.toLocaleString(undefined, {
                 minimumFractionDigits: 2,
                 maximumFractionDigits: 2,
             });

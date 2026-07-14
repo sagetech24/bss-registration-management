@@ -25,6 +25,12 @@ $code_label = $selected_event_code !== '' ? rtrim($selected_event_code, '_') : '
 $thumb_url = (string) ($event_card['thumb_url'] ?? '');
 $date_block = (string) ($event_card['date_block'] ?? '');
 $venue_show = (string) ($event_card['venue_show'] ?? '');
+$event_categories = [];
+if (!empty($event_card['categories']) && is_array($event_card['categories'])) {
+    $event_categories = $event_card['categories'];
+} elseif (is_array($selected_event) && !empty($selected_event['categories']) && is_array($selected_event['categories'])) {
+    $event_categories = $selected_event['categories'];
+}
 ?>
 
 <?php if ($selected_event === null) : ?>
@@ -47,34 +53,40 @@ $venue_show = (string) ($event_card['venue_show'] ?? '');
     <div class="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
         <div class="flex flex-col md:flex-row">
             <?php if ($thumb_url !== '') : ?>
-                <img src="<?php echo esc_url($thumb_url); ?>" alt="<?php echo esc_attr($event_title); ?>" class="md:w-56 h-44 md:h-auto object-cover shrink-0" />
+                <img src="<?php echo esc_url($thumb_url); ?>" alt="<?php echo esc_attr($event_title); ?>" class="md:w-96 md:h-64 object-cover shrink-0" />
             <?php else : ?>
-                <div class="md:w-56 h-44 bg-slate-100 flex items-center justify-center text-slate-400 text-sm shrink-0">No image</div>
+                <div class="md:w-96 md:h-64 bg-slate-100 flex items-center justify-center text-slate-400 text-sm shrink-0">No image</div>
             <?php endif; ?>
 
             <div class="flex-1 p-5 sm:p-6">
                 <div class="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
                     <div class="min-w-0">
-                        <p class="text-xs font-medium uppercase tracking-wider text-slate-400">Event dashboard</p>
+                        <!-- <p class="text-xs font-medium uppercase tracking-wider text-slate-400">Event dashboard</p> -->
                         <h1 class="mt-1 text-2xl font-semibold text-slate-900"><?php echo $event_title; ?></h1>
                         <?php if ($code_label !== '') : ?>
-                            <p class="mt-1 text-sm text-slate-500">Code: <?php echo esc_html($code_label); ?></p>
+                            <span class="my-1.5 inline-flex items-center rounded-full px-2.5 py-1 font-mono text-xs font-bold bg-indigo-50 text-indigo-700">
+                                Code: <?php echo esc_html($code_label); ?>
+                            </span>
                         <?php endif; ?>
-                        <div class="mt-3 flex flex-wrap gap-2">
-                            <span class="inline-flex items-center rounded-full px-2.5 py-1 text-xs font-medium <?php echo $uses_v2 ? 'bg-indigo-50 text-indigo-700' : 'bg-slate-100 text-slate-600'; ?>">
-                                <?php echo $uses_v2 ? 'v2 registration' : 'Legacy registration'; ?>
-                            </span>
-                            <span class="inline-flex items-center rounded-full bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-700">
-                                <?php echo esc_html($event_price_display); ?>
-                            </span>
+                        <div class="my-1 text-sm text-slate-700">
+                            <strong>Price:</strong> &nbsp;<?php echo esc_html($event_price_display); ?>
                         </div>
                         <?php if ($date_block !== '') : ?>
-                            <p class="mt-3 text-sm text-slate-700">
-                                <?php echo $date_block; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped ?>
+                            <p class="mt-2 text-sm text-slate-700">
+                                <strong>Date:</strong> <?php echo $date_block; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped ?>
                             </p>
                         <?php endif; ?>
                         <?php if ($venue_show !== '') : ?>
-                            <p class="mt-1 text-sm text-slate-500"><?php echo esc_html($venue_show); ?></p>
+                            <p class="mt-1 text-sm text-slate-500"><strong>Venue:</strong> <?php echo esc_html($venue_show); ?></p>
+                        <?php endif; ?>
+                        <?php if ($event_categories !== []) : ?>
+                            <div class="mt-4 flex flex-wrap gap-1.5">
+                                <?php foreach ($event_categories as $category_name) : ?>
+                                    <span class="inline-flex items-center rounded-full border border-slate-300 bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-700">
+                                        <?php echo esc_html((string) $category_name); ?>
+                                    </span>
+                                <?php endforeach; ?>
+                            </div>
                         <?php endif; ?>
                     </div>
 
@@ -99,7 +111,7 @@ $venue_show = (string) ($event_card['venue_show'] ?? '');
             ['label' => 'Total', 'value' => (string) (int) ($summary['total'] ?? 0)],
             ['label' => 'Paid', 'value' => (string) (int) ($summary['paid_count'] ?? 0)],
             ['label' => 'Pending', 'value' => (string) (int) ($summary['pending_count'] ?? 0)],
-            ['label' => 'Revenue', 'value' => '$' . number_format_i18n((float) ($summary['total_revenue'] ?? 0), 2)],
+            ['label' => 'Revenue', 'value' => rm_format_currency((float) ($summary['total_revenue'] ?? 0), (string) ($event_currency ?? 'SGD'), false)],
             ['label' => 'Active packages', 'value' => (string) $active_package_count],
         ];
         foreach ($stat_tiles as $tile) :

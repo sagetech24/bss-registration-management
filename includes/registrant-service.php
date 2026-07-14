@@ -108,11 +108,10 @@ function rm_present_registrant_row(array $registrant, bool $is_pending = false):
         $amount_raw = (float) $hitpay['amount'];
     }
     $currency = strtoupper(trim((string) ($hitpay['currency'] ?? '')));
+    $fallback_currency = $currency !== '' ? $currency : 'SGD';
     $amount_display = '—';
     if ($amount_raw !== null && $amount_raw !== '') {
-        $amount_display = $currency !== ''
-            ? $currency . ' ' . number_format_i18n((float) $amount_raw, 2)
-            : '$' . number_format_i18n((float) $amount_raw, 2);
+        $amount_display = $fallback_currency . ' ' . number_format_i18n((float) $amount_raw, 2);
     }
 
     $email_sent = ($registrant['isEmailConfirmationSent'] ?? '') === '1';
@@ -141,11 +140,10 @@ function rm_present_registrant_row(array $registrant, bool $is_pending = false):
         ? (float) $charge_hitpay['amount']
         : null;
     $charge_currency = strtoupper(trim((string) ($charge_hitpay['currency'] ?? '')));
+    $charge_fallback_currency = $charge_currency !== '' ? $charge_currency : $fallback_currency;
     $charge_amount_display = $amount_display;
     if ($charge_amount_raw !== null) {
-        $charge_amount_display = $charge_currency !== ''
-            ? $charge_currency . ' ' . number_format_i18n($charge_amount_raw, 2)
-            : '$' . number_format_i18n($charge_amount_raw, 2);
+        $charge_amount_display = $charge_fallback_currency . ' ' . number_format_i18n($charge_amount_raw, 2);
     }
 
     return [
@@ -289,9 +287,7 @@ function rm_format_registrant_profile_value(string $key, mixed $value): string
 
         $amount = (float) $value;
 
-        return $amount > 0
-            ? '$' . number_format_i18n($amount, floor($amount) === $amount ? 0 : 2)
-            : 'FREE';
+        return rm_format_currency($amount);
     }
 
     $string_value = trim((string) $value);
@@ -363,6 +359,10 @@ function rm_fetch_registrant_by_id(int $registrant_id, int $event_id): array
     }
 
     $event = rm_get_event_by_id($event_id);
+    if ($event === null) {
+        $source = rm_get_event_source() !== '' ? rm_get_event_source() : rm_infer_event_source($event_id);
+        $event = rm_get_event_by_id($event_id, $source);
+    }
     if (is_array($event) && rm_event_uses_v2_registration($event) && rm_event_registration_tables_exist()) {
         return rm_fetch_v2_registrant_by_id($registrant_id, $event_id);
     }
@@ -404,7 +404,8 @@ function rm_fetch_registrants_from_db(int $event_id, ?array $event = null): arra
     }
 
     if ($event === null) {
-        $event = rm_get_event_by_id($event_id);
+        $source = rm_get_event_source() !== '' ? rm_get_event_source() : rm_infer_event_source($event_id);
+        $event = rm_get_event_by_id($event_id, $source);
     }
 
     if (is_array($event) && rm_event_uses_v2_registration($event) && rm_event_registration_tables_exist()) {
@@ -446,9 +447,8 @@ function rm_present_registrant_charge_details(array $charge): array
 
     $amount = (float) $summary['amount'];
     $currency = strtoupper(trim($summary['currency']));
-    $amount_display = $currency !== ''
-        ? $currency . ' ' . number_format_i18n($amount, 2)
-        : '$' . number_format_i18n($amount, 2);
+    $display_currency = $currency !== '' ? $currency : 'SGD';
+    $amount_display = $display_currency . ' ' . number_format_i18n($amount, 2);
 
     $status_label = $status !== ''
         ? ucwords(str_replace('_', ' ', $status))
@@ -487,9 +487,8 @@ function rm_present_registrant_payment_details(array $payment_request): array
 
     $amount = (float) $summary['amount'];
     $currency = strtoupper(trim($summary['currency']));
-    $amount_display = $currency !== ''
-        ? $currency . ' ' . number_format_i18n($amount, 2)
-        : '$' . number_format_i18n($amount, 2);
+    $display_currency = $currency !== '' ? $currency : 'SGD';
+    $amount_display = $display_currency . ' ' . number_format_i18n($amount, 2);
 
     $status_label = $status !== ''
         ? ucwords(str_replace('_', ' ', $status))
@@ -680,11 +679,18 @@ function rm_build_registrants_context(array $events_by_year, string $requested_e
     $selected_event_code = rm_resolve_event_code($requested_event_code, $event_options);
     $selected_event = null;
     $event_id = $requested_event_id > 0 ? $requested_event_id : 0;
+    $event_source = rm_get_event_source();
 
-    if ($event_id > 0) {
-        $selected_event = rm_get_event_by_id($event_id);
-        if ($selected_event !== null && $selected_event_code === '') {
-            $selected_event_code = trim((string) ($selected_event['programCode'] ?? ''));
+    if ($event_id > 0 || $selected_event_code !== '') {
+        $selected_event = rm_resolve_event($event_id, $selected_event_code, $event_source);
+        if ($selected_event !== null) {
+            $event_source = rm_event_source_value($selected_event) !== ''
+                ? rm_event_source_value($selected_event)
+                : $event_source;
+            if ($selected_event_code === '') {
+                $selected_event_code = trim((string) ($selected_event['programCode'] ?? ''));
+            }
+            $event_id = isset($selected_event['id']) ? absint($selected_event['id']) : $event_id;
         }
     }
 
@@ -694,7 +700,7 @@ function rm_build_registrants_context(array $events_by_year, string $requested_e
 
     $error_message = '';
 
-    if ($selected_event_code === '') {
+    if ($selected_event_code === '' && $event_id < 1) {
         return [
             'event_options'         => $event_options,
             'selected_event_code'   => '',
@@ -718,6 +724,7 @@ function rm_build_registrants_context(array $events_by_year, string $requested_e
             $error_message = $event_fetch['error'];
         } elseif (is_array($event_fetch['event']) && $event_fetch['event'] !== []) {
             $selected_event = $event_fetch['event'];
+            $event_source = rm_event_source_value($selected_event);
         }
     }
 
@@ -763,9 +770,9 @@ function rm_build_registrants_context(array $events_by_year, string $requested_e
         $event_id = isset($selected_event['id']) ? absint($selected_event['id']) : 0;
     }
 
-    $api_args = [
+    $api_args = rm_args_with_event_source([
         'action' => 'event-registrants-data',
-    ];
+    ], $event_source);
     if ($event_id > 0) {
         $api_args['event_id'] = $event_id;
     }
@@ -773,16 +780,16 @@ function rm_build_registrants_context(array $events_by_year, string $requested_e
         $api_args['event_code'] = $selected_event_code;
     }
 
-    $payment_details_args = [
+    $payment_details_args = rm_args_with_event_source([
         'action' => 'registrant-payment-details',
-    ];
+    ], $event_source);
     if ($event_id > 0) {
         $payment_details_args['event_id'] = $event_id;
     }
 
-    $profile_args = [
+    $profile_args = rm_args_with_event_source([
         'action' => 'registrant-profile',
-    ];
+    ], $event_source);
     if ($event_id > 0) {
         $profile_args['event_id'] = $event_id;
     }
@@ -791,6 +798,7 @@ function rm_build_registrants_context(array $events_by_year, string $requested_e
         'event_options'            => $event_options,
         'selected_event_code'      => $selected_event_code,
         'selected_event_id'        => $event_id,
+        'selected_event_source'    => $event_source,
         'selected_event'           => $selected_event,
         'registrants_api_url'      => add_query_arg($api_args, rm_page_url()),
         'payment_details_api_url'  => add_query_arg($payment_details_args, rm_page_url()),
@@ -837,7 +845,11 @@ function rm_build_event_registrants_data(): array
         ];
     }
 
-    $event = rm_get_event_by_id($event_id);
+    $source = rm_get_event_source();
+    if ($source === '') {
+        $source = rm_infer_event_source($event_id);
+    }
+    $event = rm_get_event_by_id($event_id, $source);
     $db_fetch = rm_fetch_registrants_from_db($event_id, $event);
     $all_registrants = $db_fetch['error'] === '' ? $db_fetch['registrants'] : [];
     $package_summary = rm_registrants_package_summary($all_registrants);

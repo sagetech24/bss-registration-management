@@ -18,6 +18,14 @@ function rm_event_profile_url(string $event_code, int $event_id = 0, array $extr
         $args['event_id'] = $event_id;
     }
 
+    $source = '';
+    if (isset($args['event_source'])) {
+        $source = rm_normalize_event_source((string) $args['event_source']);
+    } elseif (function_exists('rm_get_event_source')) {
+        $source = rm_get_event_source();
+    }
+    $args = rm_args_with_event_source($args, $source);
+
     if (isset($args['tab']) && !array_key_exists((string) $args['tab'], rm_event_profile_tabs())) {
         $args['tab'] = 'packages';
     }
@@ -107,6 +115,7 @@ function rm_handle_event_profile_post(): void
 
     $event_code = rm_get_event_code();
     $event_id = rm_get_event_id();
+    $event_source = rm_get_event_source();
     if ($event_code === '' && $event_id < 1) {
         return;
     }
@@ -119,36 +128,39 @@ function rm_handle_event_profile_post(): void
         )
     ) {
         $flash = rm_store_event_profile_flash('error', 'Your session has expired. Please try again.');
-        wp_safe_redirect(rm_event_profile_url($event_code, $event_id, ['profile_flash' => $flash]));
+        wp_safe_redirect(rm_event_profile_url($event_code, $event_id, rm_args_with_event_source([
+            'profile_flash' => $flash,
+        ], $event_source)));
         exit;
     }
 
     if ($event_id < 1) {
-        $event = null;
-        if ($event_code !== '') {
-            $fetch = rm_fetch_event($event_code);
-            $event = is_array($fetch['event'] ?? null) ? $fetch['event'] : null;
-        }
+        $event = rm_resolve_event(0, $event_code, $event_source);
         $event_id = is_array($event) ? absint($event['id'] ?? 0) : 0;
+        if ($event_source === '' && is_array($event)) {
+            $event_source = rm_event_source_value($event);
+        }
     }
 
     if ($event_id < 1) {
         $flash = rm_store_event_profile_flash('error', 'Event could not be found.');
-        wp_safe_redirect(rm_event_profile_url($event_code, 0, ['profile_flash' => $flash]));
+        wp_safe_redirect(rm_event_profile_url($event_code, 0, rm_args_with_event_source([
+            'profile_flash' => $flash,
+        ], $event_source)));
         exit;
     }
 
     if ($rm_action === 'save_registration_settings') {
-        $result = rm_handle_save_registration_settings_post($event_id);
+        $result = rm_handle_save_registration_settings_post($event_id, $event_source);
         $redirect_tab = 'settings';
     } elseif ($rm_action === 'save_promotion') {
-        $result = rm_handle_save_promotion_post($event_id);
+        $result = rm_handle_save_promotion_post($event_id, $event_source);
         $redirect_tab = 'packages';
     } elseif ($rm_action === 'deactivate_promotion') {
-        $result = rm_handle_set_promotion_active_post($event_id, false);
+        $result = rm_handle_set_promotion_active_post($event_id, false, $event_source);
         $redirect_tab = 'packages';
     } elseif ($rm_action === 'activate_promotion') {
-        $result = rm_handle_set_promotion_active_post($event_id, true);
+        $result = rm_handle_set_promotion_active_post($event_id, true, $event_source);
         $redirect_tab = 'packages';
     } else {
         $result = [
@@ -166,23 +178,23 @@ function rm_handle_event_profile_post(): void
     );
 
     if ($event_code === '') {
-        $event = rm_get_event_by_id($event_id);
+        $event = rm_get_event_by_id($event_id, $event_source);
         $event_code = is_array($event) ? trim((string) ($event['programCode'] ?? '')) : '';
     }
 
-    wp_safe_redirect(rm_event_profile_url($event_code, $event_id, [
+    wp_safe_redirect(rm_event_profile_url($event_code, $event_id, rm_args_with_event_source([
         'profile_flash' => $flash,
         'tab'           => $redirect_tab,
-    ]));
+    ], $event_source)));
     exit;
 }
 
 /**
  * @return array{ok: bool, error: string, message?: string}
  */
-function rm_handle_save_registration_settings_post(int $event_id): array
+function rm_handle_save_registration_settings_post(int $event_id, string $source = ''): array
 {
-    $event = rm_get_event_by_id($event_id);
+    $event = rm_get_event_by_id($event_id, $source);
     if ($event === null) {
         return [
             'ok'    => false,
@@ -208,10 +220,14 @@ function rm_handle_save_registration_settings_post(int $event_id): array
     $normalized = rm_normalize_registration_settings_input(
         [
             'mode'          => $_POST['mode'] ?? null,
-            'form_preset'   => $_POST['form_preset'] ?? null,
-            'group_min'     => $_POST['group_min'] ?? null,
+            'form_preset'             => $_POST['form_preset'] ?? null,
+            'form_fields'             => $_POST['form_fields'] ?? null,
+            'custom_fields'           => $_POST['custom_fields'] ?? null,
+            'custom_fields_submitted' => $_POST['custom_fields_submitted'] ?? null,
+            'group_min'               => $_POST['group_min'] ?? null,
             'group_max'     => $_POST['group_max'] ?? null,
             'pricing_model' => $_POST['pricing_model'] ?? null,
+            'currency'      => $_POST['currency'] ?? null,
             'base_price'    => $_POST['base_price'] ?? null,
         ],
         $existing_registration
@@ -224,7 +240,7 @@ function rm_handle_save_registration_settings_post(int $event_id): array
         ];
     }
 
-    $saved = rm_save_event_registration_settings($event_id, $normalized['registration']);
+    $saved = rm_save_event_registration_settings($event_id, $normalized['registration'], $source);
     if (!$saved['ok']) {
         return $saved;
     }
@@ -239,9 +255,9 @@ function rm_handle_save_registration_settings_post(int $event_id): array
 /**
  * @return array{ok: bool, error: string, message?: string}
  */
-function rm_handle_save_promotion_post(int $event_id): array
+function rm_handle_save_promotion_post(int $event_id, string $source = ''): array
 {
-    $event = rm_get_event_by_id($event_id);
+    $event = rm_get_event_by_id($event_id, $source);
     if ($event === null) {
         return [
             'ok'    => false,
@@ -303,8 +319,9 @@ function rm_handle_save_promotion_post(int $event_id): array
 /**
  * @return array{ok: bool, error: string, message?: string}
  */
-function rm_handle_set_promotion_active_post(int $event_id, bool $is_active): array
+function rm_handle_set_promotion_active_post(int $event_id, bool $is_active, string $source = ''): array
 {
+    unset($source);
     $promotion_id = isset($_POST['promotion_id']) ? absint($_POST['promotion_id']) : 0;
     $result = rm_set_event_promotion_active($promotion_id, $event_id, $is_active);
     if (!$result['ok']) {
@@ -328,12 +345,19 @@ function rm_build_event_profile_context(array $events_by_year, string $requested
     $selected_event_code = rm_resolve_event_code($requested_event_code, $event_options);
     $selected_event = null;
     $event_id = $requested_event_id > 0 ? $requested_event_id : 0;
+    $event_source = rm_get_event_source();
     $error_message = '';
 
-    if ($event_id > 0) {
-        $selected_event = rm_get_event_by_id($event_id);
-        if ($selected_event !== null && $selected_event_code === '') {
-            $selected_event_code = trim((string) ($selected_event['programCode'] ?? ''));
+    if ($event_id > 0 || $selected_event_code !== '') {
+        $selected_event = rm_resolve_event($event_id, $selected_event_code, $event_source);
+        if ($selected_event !== null) {
+            $event_source = rm_event_source_value($selected_event) !== ''
+                ? rm_event_source_value($selected_event)
+                : $event_source;
+            if ($selected_event_code === '') {
+                $selected_event_code = trim((string) ($selected_event['programCode'] ?? ''));
+            }
+            $event_id = isset($selected_event['id']) ? absint($selected_event['id']) : $event_id;
         }
     }
 
@@ -355,6 +379,7 @@ function rm_build_event_profile_context(array $events_by_year, string $requested
             $error_message = $event_fetch['error'];
         } elseif (is_array($event_fetch['event']) && $event_fetch['event'] !== []) {
             $selected_event = $event_fetch['event'];
+            $event_source = rm_event_source_value($selected_event);
         }
     }
 
@@ -380,8 +405,8 @@ function rm_build_event_profile_context(array $events_by_year, string $requested
         $event_id = isset($selected_event['id']) ? absint($selected_event['id']) : 0;
     }
 
-    // Prefer DB row for settings accuracy after edits.
-    $db_event = $event_id > 0 ? rm_get_event_by_id($event_id) : null;
+    // Prefer fresh DB/CPT row for settings accuracy after edits.
+    $db_event = $event_id > 0 ? rm_get_event_by_id($event_id, $event_source) : null;
     if (is_array($db_event)) {
         $selected_event = array_merge($selected_event, $db_event);
     }
@@ -391,17 +416,17 @@ function rm_build_event_profile_context(array $events_by_year, string $requested
     $page_url = rm_page_url();
     $card = rm_present_event_card($selected_event, $page_url);
 
-    $registrants_args = [
+    $registrants_args = rm_args_with_event_source([
         'action'     => 'get-event-registrants',
         'event_code' => $selected_event_code,
-    ];
+    ], $event_source);
     if ($event_id > 0) {
         $registrants_args['event_id'] = $event_id;
     }
 
-    $registrants_api_args = [
+    $registrants_api_args = rm_args_with_event_source([
         'action' => 'event-registrants-data',
-    ];
+    ], $event_source);
     if ($event_id > 0) {
         $registrants_api_args['event_id'] = $event_id;
     }
@@ -409,16 +434,16 @@ function rm_build_event_profile_context(array $events_by_year, string $requested
         $registrants_api_args['event_code'] = $selected_event_code;
     }
 
-    $payment_details_args = [
+    $payment_details_args = rm_args_with_event_source([
         'action' => 'registrant-payment-details',
-    ];
+    ], $event_source);
     if ($event_id > 0) {
         $payment_details_args['event_id'] = $event_id;
     }
 
-    $profile_api_args = [
+    $profile_api_args = rm_args_with_event_source([
         'action' => 'registrant-profile',
-    ];
+    ], $event_source);
     if ($event_id > 0) {
         $profile_api_args['event_id'] = $event_id;
     }
@@ -442,6 +467,7 @@ function rm_build_event_profile_context(array $events_by_year, string $requested
     $promotions = [];
     $active_package_count = 0;
     foreach ($promotions_raw as $promotion) {
+        $promotion['_currency'] = $event_currency;
         $present = rm_present_event_promotion($promotion);
         $present['package_href'] = $selected_event_code !== ''
             ? rm_registration_url([
@@ -467,9 +493,8 @@ function rm_build_event_profile_context(array $events_by_year, string $requested
     $price_num = function_exists('rm_event_registration_price')
         ? rm_event_registration_price($selected_event)
         : (float) ($selected_event['price'] ?? 0);
-    $price_display = $price_num > 0
-        ? '$' . number_format_i18n($price_num, 2)
-        : 'FREE';
+    $event_currency = rm_registration_currency($selected_event);
+    $price_display = rm_format_currency($price_num, $event_currency);
 
     $profile_tab = rm_get_event_profile_tab();
 
@@ -477,6 +502,7 @@ function rm_build_event_profile_context(array $events_by_year, string $requested
         'selected_event'              => $selected_event,
         'selected_event_code'         => $selected_event_code,
         'selected_event_id'           => $event_id,
+        'selected_event_source'       => $event_source,
         'event_not_found'             => false,
         'profile_error'               => '',
         'profile_tab'                 => $profile_tab,
@@ -490,8 +516,9 @@ function rm_build_event_profile_context(array $events_by_year, string $requested
         'package_summary'             => $package_summary,
         'event_card'                  => $card,
         'event_is_free'               => rm_event_is_free($selected_event),
+        'event_currency'              => $event_currency,
         'event_price_display'         => $price_display,
-        'registrants_href'            => rm_event_profile_url($selected_event_code, $event_id, ['tab' => 'registrants']),
+        'registrants_href'            => rm_event_profile_url($selected_event_code, $event_id, rm_args_with_event_source(['tab' => 'registrants'], $event_source)),
         'registration_href'           => $card['registration_href'],
         'registrants_api_url'         => add_query_arg($registrants_api_args, rm_page_url()),
         'payment_details_api_url'     => add_query_arg($payment_details_args, rm_page_url()),
@@ -499,5 +526,6 @@ function rm_build_event_profile_context(array $events_by_year, string $requested
         'profile_flash'               => $flash,
         'registration_modes'          => rm_registration_modes(),
         'form_presets'                => rm_form_presets(),
+        'registration_currencies'     => rm_registration_currencies(),
     ];
 }

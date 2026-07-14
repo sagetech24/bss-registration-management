@@ -43,35 +43,50 @@ function rm_present_event_card(array $event, string $page_url): array
     $venue_raw = trim(preg_replace('/\s+/u', ' ', $venue_raw));
     $venue_show = $venue_raw !== '' ? wp_trim_words($venue_raw, 12, '…') : '';
 
+    $categories = [];
+    if (!empty($event['categories']) && is_array($event['categories'])) {
+        foreach ($event['categories'] as $category) {
+            $name = trim((string) $category);
+            if ($name !== '') {
+                $categories[] = $name;
+            }
+        }
+    }
+
     $event_id = isset($event['id']) ? absint($event['id']) : 0;
-    $registrants_args = [
+    $source = rm_event_source_value($event);
+
+    $registrants_args = rm_args_with_event_source([
         'action'     => 'get-event-registrants',
         'event_code' => $program_code,
-    ];
+    ], $source);
     if ($event_id > 0) {
         $registrants_args['event_id'] = $event_id;
     }
 
-    $profile_args = [
+    $profile_args = rm_args_with_event_source([
         'action'     => 'get-event-profile',
         'event_code' => $program_code,
-    ];
+    ], $source);
     if ($event_id > 0) {
         $profile_args['event_id'] = $event_id;
     }
 
     return [
-        'title'            => $title,
-        'program_code'     => $program_code,
-        'thumb_url'        => $thumb_url,
-        'date_block'       => $date_block,
-        'venue_show'       => $venue_show,
-        'profile_href'     => add_query_arg($profile_args, $page_url),
-        'registrants_href' => add_query_arg($registrants_args, $page_url),
-        'registration_href' => rm_registration_url(
-            $program_code !== '' ? ['event_code' => $program_code] : []
-        ),
-        'package_urls'     => rm_present_event_package_urls($event, $program_code),
+        'title'             => $title,
+        'program_code'      => $program_code,
+        'thumb_url'         => $thumb_url,
+        'date_block'        => $date_block,
+        'venue_show'        => $venue_show,
+        'categories'        => $categories,
+        'is_cpt'            => $source === 'cpt',
+        'edit_url'          => isset($event['edit_url']) ? (string) $event['edit_url'] : '',
+        'profile_href'      => add_query_arg($profile_args, $page_url),
+        'registrants_href'  => add_query_arg($registrants_args, $page_url),
+        'registration_href' => $program_code !== ''
+            ? rm_registration_url(['event_code' => $program_code])
+            : '',
+        'package_urls'      => rm_present_event_package_urls($event, $program_code),
     ];
 }
 
@@ -87,8 +102,10 @@ function rm_present_event_package_urls(array $event, string $program_code): arra
     }
 
     $promotions = rm_list_event_promotions($event_id, true);
+    $pkg_currency = rm_registration_currency($event);
     $out = [];
     foreach ($promotions as $promotion) {
+        $promotion['_currency'] = $pkg_currency;
         $present = rm_present_event_promotion($promotion);
         $out[] = [
             'title'         => $present['title'],

@@ -23,7 +23,8 @@ function rm_v2_submit_registration(
     ?array $promotion = null
 ): array {
     $event_id = isset($event['id']) ? absint($event['id']) : 0;
-    $event_gate = rm_validate_event_registration($event_id);
+    $source = rm_event_source_value($event);
+    $event_gate = rm_validate_event_registration($event_id, $source);
     if (!$event_gate['ok']) {
         return rm_v2_submit_error($event_gate['error']);
     }
@@ -82,7 +83,7 @@ function rm_v2_submit_registration(
     ];
 
     if ($pricing['total_amount'] <= 0) {
-        return rm_v2_insert_confirmed_registration($header, $member_rows, $pricing, $event_id);
+        return rm_v2_insert_confirmed_registration($header, $member_rows, $pricing, $event_id, $source);
     }
 
     return rm_v2_insert_pending_registration($header, $member_rows, $pricing, $event_id);
@@ -160,9 +161,15 @@ function rm_v2_insert_confirmed_registration(
     array $header,
     array $member_rows,
     array $pricing,
-    int $event_id
+    int $event_id,
+    string $source = ''
 ): array {
     global $wpdb;
+
+    $source = rm_normalize_event_source($source);
+    if ($source === '') {
+        $source = rm_infer_event_source($event_id);
+    }
 
     $header['payment_status'] = 'free';
     $header['paid_at'] = current_time('mysql');
@@ -171,7 +178,7 @@ function rm_v2_insert_confirmed_registration(
 
     $order_numbers = [];
     foreach ($member_rows as $index => $member_row) {
-        $order_result = rm_allocate_registration_order_number($event_id);
+        $order_result = rm_allocate_registration_order_number($event_id, $source);
         if (!$order_result['ok']) {
             $wpdb->query('ROLLBACK');
 
@@ -255,6 +262,7 @@ function rm_v2_finalize_paid_registration(int $pending_id, string $payment_reque
     }
 
     $event_id = isset($header['event_id']) ? absint($header['event_id']) : 0;
+    $source = rm_infer_event_source($event_id);
     $primary_email = trim((string) ($header['primary_email'] ?? ''));
 
     if ($event_id > 0 && $primary_email !== '') {
@@ -299,7 +307,7 @@ function rm_v2_finalize_paid_registration(int $pending_id, string $payment_reque
 
     $order_numbers = [];
     foreach ($lines as $index => $line) {
-        $order_result = rm_allocate_registration_order_number($event_id);
+        $order_result = rm_allocate_registration_order_number($event_id, $source);
         if (!$order_result['ok']) {
             $wpdb->query('ROLLBACK');
 

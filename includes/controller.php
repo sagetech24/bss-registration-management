@@ -97,6 +97,9 @@ function rm_build_register_context(): array
     }
 
     $context['active_promotion'] = $promotion;
+    if ($promotion !== null) {
+        $promotion['_currency'] = rm_registration_currency($event);
+    }
     $context['promotion_present'] = $promotion !== null
         ? rm_present_event_promotion($promotion)
         : null;
@@ -271,13 +274,15 @@ function rm_build_dashboard_context(): array
     $page_url = rm_page_url();
 
     $fetch = rm_fetch_registration_events();
-    $event_years = rm_get_available_event_years($fetch['events']);
+    $cpt_fetch = rm_fetch_cpt_events();
+    $event_years = rm_merge_event_years($cpt_fetch['events'], $fetch['events']);
     $event_year = rm_get_event_year($event_years);
     $event_filter = rm_get_event_filter($event_year);
     $events = rm_filter_events($fetch['events'], $event_filter, $event_search, $event_year);
+    $cpt_events = rm_filter_events($cpt_fetch['events'], $event_filter, $event_search, $event_year);
 
     $context = [
-        'event_count'              => rm_count_filtered_events($events),
+        'event_count'              => rm_count_filtered_events($events) + rm_count_filtered_events($cpt_events),
         'has_active_event_filters' => rm_has_active_event_filters($event_filter, $event_year, $event_search),
         'welcome_name'         => rm_get_welcome_name(),
         'view_action'          => $view_action,
@@ -288,18 +293,30 @@ function rm_build_dashboard_context(): array
         'event_year'           => $event_year,
         'event_years'          => $event_years,
         'event_search'         => $event_search,
+        'cpt_events'           => $cpt_events,
         'events'               => $events,
         'error_message'        => $fetch['error'],
     ];
 
     if ($view_action === 'get-event-registrants') {
         $event_code = rm_get_event_code();
-        if ($event_code === '') {
+        if ($event_code === '' && rm_get_event_id() < 1) {
             wp_safe_redirect(rm_page_url());
             exit;
         }
 
-        $registrants_context = rm_build_registrants_context($fetch['events'], $event_code, rm_get_event_id());
+        $combined_events = $fetch['events'];
+        foreach ($cpt_fetch['events'] as $year => $list) {
+            if (!isset($combined_events[$year])) {
+                $combined_events[$year] = [];
+            }
+            $combined_events[$year] = array_merge(
+                is_array($combined_events[$year]) ? $combined_events[$year] : [],
+                is_array($list) ? $list : []
+            );
+        }
+
+        $registrants_context = rm_build_registrants_context($combined_events, $event_code, rm_get_event_id());
 
         if (!empty($registrants_context['event_not_found'])) {
             $context['event_not_found'] = true;
@@ -317,7 +334,18 @@ function rm_build_dashboard_context(): array
             exit;
         }
 
-        $profile_context = rm_build_event_profile_context($fetch['events'], $event_code, $event_id);
+        $combined_events = $fetch['events'];
+        foreach ($cpt_fetch['events'] as $year => $list) {
+            if (!isset($combined_events[$year])) {
+                $combined_events[$year] = [];
+            }
+            $combined_events[$year] = array_merge(
+                is_array($combined_events[$year]) ? $combined_events[$year] : [],
+                is_array($list) ? $list : []
+            );
+        }
+
+        $profile_context = rm_build_event_profile_context($combined_events, $event_code, $event_id);
 
         if (!empty($profile_context['event_not_found'])) {
             $context['event_not_found'] = true;

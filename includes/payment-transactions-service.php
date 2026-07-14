@@ -102,9 +102,8 @@ function rm_present_payment_transaction_row(array $charge): array
 
     $amount = (float) $summary['amount'];
     $currency = strtoupper(trim($summary['currency']));
-    $amount_display = $currency !== ''
-        ? $currency . ' ' . number_format_i18n($amount, 2)
-        : '$' . number_format_i18n($amount, 2);
+    $display_currency = $currency !== '' ? $currency : 'SGD';
+    $amount_display = $display_currency . ' ' . number_format_i18n($amount, 2);
 
     $paid_at = trim($summary['paid_at']);
     $paid_display = rm_format_payment_transaction_datetime($paid_at);

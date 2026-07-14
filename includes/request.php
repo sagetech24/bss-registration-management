@@ -143,6 +143,20 @@ function rm_get_event_id(): int
     return absint(wp_unslash((string) $_GET['event_id']));
 }
 
+/**
+ * Disambiguate bss_events vs CPT event ids (event_source=cpt).
+ */
+function rm_get_event_source(): string
+{
+    if (!isset($_GET['event_source'])) {
+        return '';
+    }
+
+    return rm_normalize_event_source(
+        sanitize_key(wp_unslash((string) $_GET['event_source']))
+    );
+}
+
 function rm_active_nav(string $view_action): string
 {
     if ($view_action === 'get-event-registrants') {

@@ -62,6 +62,16 @@ function rm_form_core_field_definitions(): array
 }
 
 /**
+ * Core fields that must always appear on a custom form preset.
+ *
+ * @return list<string>
+ */
+function rm_form_custom_required_field_keys(): array
+{
+    return ['given_name', 'family_name', 'email'];
+}
+
+/**
  * @return list<string>
  */
 function rm_form_preset_field_keys(string $preset): array
@@ -69,11 +79,261 @@ function rm_form_preset_field_keys(string $preset): array
     return match ($preset) {
         RM_FORM_PRESET_MINIMAL => ['given_name', 'family_name', 'email', 'contact'],
         RM_FORM_PRESET_STANDARD => ['given_name', 'family_name', 'email', 'contact', 'title', 'nric'],
+        RM_FORM_PRESET_CUSTOM => rm_form_custom_required_field_keys(),
         default => [
             'given_name', 'family_name', 'email', 'contact', 'title', 'nric',
             'christian_name', 'certificate_name', 'address1', 'address2', 'postcode', 'church_name',
         ],
     };
+}
+
+/**
+ * Build normalized core field definitions from selected keys.
+ * Always includes required custom-preset keys and marks them required.
+ *
+ * @param list<string> $keys
+ * @return list<array<string, mixed>>
+ */
+function rm_form_build_fields_from_keys(array $keys): array
+{
+    $core_defs = rm_form_core_field_definitions();
+    $required = rm_form_custom_required_field_keys();
+    $selected = [];
+
+    foreach ($keys as $key) {
+        $key = sanitize_key((string) $key);
+        if ($key !== '' && isset($core_defs[$key])) {
+            $selected[$key] = true;
+        }
+    }
+
+    foreach ($required as $key) {
+        $selected[$key] = true;
+    }
+
+    $fields = [];
+    foreach (array_keys($core_defs) as $key) {
+        if (!isset($selected[$key])) {
+            continue;
+        }
+
+        $field = $core_defs[$key];
+        if (in_array($key, $required, true)) {
+            $field['required'] = true;
+        }
+        $fields[] = $field;
+    }
+
+    usort($fields, static function (array $a, array $b): int {
+        return ((int) ($a['order'] ?? 0)) <=> ((int) ($b['order'] ?? 0));
+    });
+
+    return $fields;
+}
+
+/**
+ * Selected core field keys for the settings custom-field picker.
+ *
+ * @param array<string, mixed> $config
+ * @return list<string>
+ */
+function rm_form_selected_field_keys(array $config): array
+{
+    $preset = (string) ($config['form']['preset'] ?? RM_FORM_PRESET_FULL);
+    $fields = isset($config['form']['fields']) && is_array($config['form']['fields'])
+        ? $config['form']['fields']
+        : [];
+    $core_defs = rm_form_core_field_definitions();
+
+    if ($preset === RM_FORM_PRESET_CUSTOM && $fields !== []) {
+        $keys = [];
+        foreach ($fields as $field) {
+            if (!is_array($field) || empty($field['key'])) {
+                continue;
+            }
+            $key = sanitize_key((string) $field['key']);
+            if (!isset($core_defs[$key])) {
+                continue;
+            }
+            $keys[] = $key;
+        }
+
+        return array_values(array_unique(array_merge(rm_form_custom_required_field_keys(), $keys)));
+    }
+
+    return rm_form_preset_field_keys($preset === RM_FORM_PRESET_CUSTOM ? RM_FORM_PRESET_CUSTOM : $preset);
+}
+
+/**
+ * Field types admins can create on a custom form preset.
+ *
+ * @return list<string>
+ */
+function rm_form_allowed_custom_field_types(): array
+{
+    return ['text', 'number', 'email', 'phone', 'textarea', 'select', 'radio', 'date', 'checkbox'];
+}
+
+/**
+ * Parse newline/comma-separated option labels into form options.
+ *
+ * @return list<array{value: string, label: string}>
+ */
+function rm_form_parse_options_text(string $text): array
+{
+    $parts = preg_split('/[\r\n,]+/', $text) ?: [];
+    $options = [];
+
+    foreach ($parts as $part) {
+        $label = trim((string) $part);
+        if ($label === '') {
+            continue;
+        }
+        $options[] = [
+            'value' => $label,
+            'label' => $label,
+        ];
+    }
+
+    return $options;
+}
+
+/**
+ * Extra (non-core) custom fields for the Event Settings editor.
+ *
+ * @param array<string, mixed> $config
+ * @return list<array{key: string, label: string, type: string, required: bool, optionsText: string}>
+ */
+function rm_form_present_admin_custom_fields(array $config): array
+{
+    $fields = isset($config['form']['fields']) && is_array($config['form']['fields'])
+        ? $config['form']['fields']
+        : [];
+    $core_defs = rm_form_core_field_definitions();
+    $presented = [];
+
+    foreach ($fields as $field) {
+        if (!is_array($field) || empty($field['key'])) {
+            continue;
+        }
+
+        $key = sanitize_key((string) $field['key']);
+        if ($key === '' || isset($core_defs[$key])) {
+            continue;
+        }
+
+        $options_text = '';
+        if (!empty($field['options']) && is_array($field['options'])) {
+            $labels = [];
+            foreach ($field['options'] as $option) {
+                if (is_array($option)) {
+                    $labels[] = (string) ($option['label'] ?? $option['value'] ?? '');
+                } else {
+                    $labels[] = (string) $option;
+                }
+            }
+            $options_text = implode("\n", array_values(array_filter($labels, static fn (string $label): bool => $label !== '')));
+        }
+
+        $presented[] = [
+            'key'         => $key,
+            'label'       => sanitize_text_field((string) ($field['label'] ?? $key)),
+            'type'        => sanitize_key((string) ($field['type'] ?? 'text')),
+            'required'    => !empty($field['required']),
+            'optionsText' => $options_text,
+        ];
+    }
+
+    return $presented;
+}
+
+/**
+ * Normalize admin-created custom fields from Event Settings POST data.
+ *
+ * @param mixed $rows
+ * @return list<array<string, mixed>>
+ */
+function rm_form_normalize_admin_custom_fields_input(mixed $rows): array
+{
+    if (!is_array($rows)) {
+        return [];
+    }
+
+    $core_defs = rm_form_core_field_definitions();
+    $used_keys = array_fill_keys(array_keys($core_defs), true);
+    $fields = [];
+    $order = 100;
+
+    foreach ($rows as $row) {
+        if (!is_array($row)) {
+            continue;
+        }
+
+        $label = sanitize_text_field((string) ($row['label'] ?? ''));
+        if ($label === '') {
+            continue;
+        }
+
+        $key = sanitize_key((string) ($row['key'] ?? ''));
+        if ($key === '') {
+            $key = sanitize_key($label);
+        }
+        if ($key === '') {
+            $key = 'custom_field';
+        }
+
+        if (isset($core_defs[$key])) {
+            $key = 'custom_' . $key;
+        }
+
+        $candidate = $key;
+        $suffix = 2;
+        while (isset($used_keys[$candidate])) {
+            $candidate = $key . '_' . $suffix;
+            $suffix++;
+        }
+        $key = $candidate;
+        $used_keys[$key] = true;
+
+        $type = sanitize_key((string) ($row['type'] ?? 'text'));
+        if (!in_array($type, rm_form_allowed_custom_field_types(), true)) {
+            $type = 'text';
+        }
+
+        $field = [
+            'key'      => $key,
+            'label'    => $label,
+            'type'     => $type,
+            'required' => !empty($row['required']),
+            'source'   => 'custom',
+            'order'    => $order,
+        ];
+
+        $placeholder = sanitize_text_field((string) ($row['placeholder'] ?? ''));
+        if ($placeholder !== '') {
+            $field['placeholder'] = $placeholder;
+        }
+
+        if (in_array($type, ['select', 'radio', 'checkbox_group'], true)) {
+            $options = [];
+            if (isset($row['options']) && is_array($row['options'])) {
+                $options = rm_form_normalize_options($row['options']);
+            } else {
+                $options_text = (string) ($row['options'] ?? $row['optionsText'] ?? '');
+                $options = rm_form_normalize_options(rm_form_parse_options_text($options_text));
+            }
+
+            if ($options === []) {
+                continue;
+            }
+            $field['options'] = $options;
+        }
+
+        $fields[] = $field;
+        $order++;
+    }
+
+    return $fields;
 }
 
 /**
@@ -86,11 +346,16 @@ function rm_parse_form_schema(array $event): array
     $form = $config['form'];
     $preset = (string) ($form['preset'] ?? RM_FORM_PRESET_FULL);
     $scope = (string) ($form['scope'] ?? 'per_member');
-    $custom_fields = is_array($form['fields']) ? $form['fields'] : [];
+    $stored_fields = is_array($form['fields']) ? $form['fields'] : [];
     $core_defs = rm_form_core_field_definitions();
 
-    if ($custom_fields !== []) {
-        $fields = rm_form_normalize_fields($custom_fields, $core_defs);
+    if ($preset === RM_FORM_PRESET_CUSTOM) {
+        if ($stored_fields !== []) {
+            $fields = rm_form_normalize_fields($stored_fields, $core_defs);
+            $fields = rm_form_ensure_custom_required_fields($fields, $core_defs);
+        } else {
+            $fields = rm_form_build_fields_from_keys(rm_form_custom_required_field_keys());
+        }
     } else {
         $keys = rm_form_preset_field_keys($preset);
         $fields = [];
@@ -110,6 +375,39 @@ function rm_parse_form_schema(array $event): array
         'preset' => $preset,
         'scope'  => $scope,
     ];
+}
+
+/**
+ * Ensure custom-preset forms always include required core fields.
+ *
+ * @param list<array<string, mixed>> $fields
+ * @param array<string, array<string, mixed>> $core_defs
+ * @return list<array<string, mixed>>
+ */
+function rm_form_ensure_custom_required_fields(array $fields, array $core_defs): array
+{
+    $by_key = [];
+    foreach ($fields as $field) {
+        if (!is_array($field) || empty($field['key'])) {
+            continue;
+        }
+        $key = sanitize_key((string) $field['key']);
+        $by_key[$key] = $field;
+    }
+
+    foreach (rm_form_custom_required_field_keys() as $required_key) {
+        if (isset($by_key[$required_key])) {
+            $by_key[$required_key]['required'] = true;
+            continue;
+        }
+        if (isset($core_defs[$required_key])) {
+            $field = $core_defs[$required_key];
+            $field['required'] = true;
+            $by_key[$required_key] = $field;
+        }
+    }
+
+    return array_values($by_key);
 }
 
 /**

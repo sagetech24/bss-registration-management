@@ -9,6 +9,12 @@ const RM_REGISTRATION_MODE_GROUP_PER_HEAD = 'group_per_head';
 const RM_FORM_PRESET_MINIMAL = 'minimal';
 const RM_FORM_PRESET_STANDARD = 'standard';
 const RM_FORM_PRESET_FULL = 'full';
+const RM_FORM_PRESET_CUSTOM = 'custom';
+
+const RM_CURRENCY_SGD = 'SGD';
+const RM_CURRENCY_USD = 'USD';
+const RM_CURRENCY_RMB = 'RMB';
+const RM_CURRENCY_AUD = 'AUD';
 
 /**
  * @return list<string>
@@ -31,7 +37,71 @@ function rm_form_presets(): array
         RM_FORM_PRESET_MINIMAL,
         RM_FORM_PRESET_STANDARD,
         RM_FORM_PRESET_FULL,
+        RM_FORM_PRESET_CUSTOM,
     ];
+}
+
+/**
+ * Supported event payment currencies (staff-facing codes).
+ *
+ * @return list<string>
+ */
+function rm_registration_currencies(): array
+{
+    return [
+        RM_CURRENCY_SGD,
+        RM_CURRENCY_USD,
+        RM_CURRENCY_RMB,
+        RM_CURRENCY_AUD,
+    ];
+}
+
+/**
+ * Map a staff-facing currency code to the ISO code HitPay expects.
+ */
+function rm_registration_currency_for_hitpay(string $currency): string
+{
+    $currency = strtoupper(sanitize_key($currency));
+
+    // HitPay / ISO 4217 use CNY for Chinese Yuan (RMB).
+    if ($currency === RM_CURRENCY_RMB) {
+        return 'CNY';
+    }
+
+    if (in_array($currency, rm_registration_currencies(), true)) {
+        return $currency;
+    }
+
+    return RM_CURRENCY_SGD;
+}
+
+/**
+ * @param array<string, mixed> $event
+ */
+function rm_registration_currency(array $event): string
+{
+    $config = rm_parse_registration_config($event);
+    $currency = strtoupper(sanitize_key((string) ($config['pricing']['currency'] ?? RM_CURRENCY_SGD)));
+
+    return in_array($currency, rm_registration_currencies(), true)
+        ? $currency
+        : RM_CURRENCY_SGD;
+}
+
+/**
+ * Format a monetary amount with the event's configured currency.
+ *
+ * Returns e.g. "SGD 120.00", "USD 50", or "FREE".
+ */
+function rm_format_currency(float $amount, string $currency = 'SGD', bool $show_free = true): string
+{
+    if ($amount <= 0 && $show_free) {
+        return 'FREE';
+    }
+
+    $decimals = floor($amount) === $amount ? 0 : 2;
+
+    return $currency . ' ' . number_format_i18n($amount, $decimals);
 }
 
 /**
@@ -95,6 +165,7 @@ function rm_registration_config_defaults(): array
         'pricing' => [
             'model'      => 'flat',
             'base_price' => null,
+            'currency'   => RM_CURRENCY_SGD,
             'slots'      => [],
         ],
     ];
@@ -139,6 +210,11 @@ function rm_parse_registration_config(array $event): array
             ? 'package_slots'
             : 'flat';
     }
+
+    $currency = strtoupper(sanitize_key((string) ($config['pricing']['currency'] ?? RM_CURRENCY_SGD)));
+    $config['pricing']['currency'] = in_array($currency, rm_registration_currencies(), true)
+        ? $currency
+        : RM_CURRENCY_SGD;
 
     return $config;
 }
@@ -187,11 +263,16 @@ function rm_present_registration_config(array $config): array
         RM_FORM_PRESET_MINIMAL  => 'Minimal',
         RM_FORM_PRESET_STANDARD => 'Standard',
         RM_FORM_PRESET_FULL     => 'Full',
+        RM_FORM_PRESET_CUSTOM   => 'Custom',
     ];
 
     $base_price = $config['pricing']['base_price'] ?? null;
+    $currency = strtoupper(sanitize_key((string) ($config['pricing']['currency'] ?? RM_CURRENCY_SGD)));
+    if (!in_array($currency, rm_registration_currencies(), true)) {
+        $currency = RM_CURRENCY_SGD;
+    }
     $base_price_display = $base_price !== null && $base_price !== ''
-        ? '$' . number_format_i18n((float) $base_price, 2)
+        ? $currency . ' ' . number_format_i18n((float) $base_price, 2)
         : 'Event default price';
 
     $custom_fields = isset($config['form']['fields']) && is_array($config['form']['fields'])
@@ -206,6 +287,7 @@ function rm_present_registration_config(array $config): array
         'group_min'          => (int) ($config['group']['min'] ?? 1),
         'group_max'          => (int) ($config['group']['max'] ?? 1),
         'pricing_model'      => (string) ($config['pricing']['model'] ?? 'flat'),
+        'currency'           => $currency,
         'base_price'         => $base_price !== null && $base_price !== '' ? (float) $base_price : null,
         'base_price_display' => $base_price_display,
         'custom_field_count' => $custom_fields,
@@ -261,6 +343,17 @@ function rm_normalize_registration_settings_input(array $input, array $existing_
         $pricing_model = $mode === RM_REGISTRATION_MODE_GROUP_PER_HEAD ? 'package_slots' : 'flat';
     }
 
+    $currency = isset($input['currency'])
+        ? strtoupper(sanitize_key((string) $input['currency']))
+        : strtoupper(sanitize_key((string) ($existing['pricing']['currency'] ?? RM_CURRENCY_SGD)));
+    if (!in_array($currency, rm_registration_currencies(), true)) {
+        return [
+            'ok'           => false,
+            'error'        => 'Invalid currency.',
+            'registration' => [],
+        ];
+    }
+
     $base_price = null;
     if (isset($input['base_price']) && trim((string) $input['base_price']) !== '') {
         $base_price = (float) $input['base_price'];
@@ -283,15 +376,81 @@ function rm_normalize_registration_settings_input(array $input, array $existing_
         ? $existing['form']['scope']
         : 'per_member';
 
+    if ($preset === RM_FORM_PRESET_CUSTOM) {
+        $core_defs = rm_form_core_field_definitions();
+        $selected_keys = [];
+
+        if (isset($input['form_fields']) && is_array($input['form_fields'])) {
+            foreach ($input['form_fields'] as $field_key) {
+                $selected_keys[] = sanitize_key((string) $field_key);
+            }
+        } else {
+            foreach ($existing_fields as $existing_field) {
+                if (!is_array($existing_field) || empty($existing_field['key'])) {
+                    continue;
+                }
+                $existing_key = sanitize_key((string) $existing_field['key']);
+                if (isset($core_defs[$existing_key])) {
+                    $selected_keys[] = $existing_key;
+                }
+            }
+        }
+
+        $core_fields = rm_form_build_fields_from_keys($selected_keys);
+
+        if (!empty($input['custom_fields_submitted'])) {
+            $admin_custom_fields = rm_form_normalize_admin_custom_fields_input($input['custom_fields'] ?? []);
+        } else {
+            $existing_custom_rows = [];
+            foreach ($existing_fields as $existing_field) {
+                if (!is_array($existing_field) || empty($existing_field['key'])) {
+                    continue;
+                }
+                $existing_key = sanitize_key((string) $existing_field['key']);
+                if (isset($core_defs[$existing_key])) {
+                    continue;
+                }
+
+                $options_text = '';
+                if (!empty($existing_field['options']) && is_array($existing_field['options'])) {
+                    $labels = [];
+                    foreach ($existing_field['options'] as $option) {
+                        if (is_array($option)) {
+                            $labels[] = (string) ($option['label'] ?? $option['value'] ?? '');
+                        } else {
+                            $labels[] = (string) $option;
+                        }
+                    }
+                    $options_text = implode("\n", array_values(array_filter($labels)));
+                }
+
+                $existing_custom_rows[] = [
+                    'key'         => $existing_key,
+                    'label'       => $existing_field['label'] ?? $existing_key,
+                    'type'        => $existing_field['type'] ?? 'text',
+                    'required'    => !empty($existing_field['required']) ? '1' : '',
+                    'optionsText' => $options_text,
+                    'placeholder' => $existing_field['placeholder'] ?? '',
+                ];
+            }
+            $admin_custom_fields = rm_form_normalize_admin_custom_fields_input($existing_custom_rows);
+        }
+
+        $form_fields = array_merge($core_fields, $admin_custom_fields);
+    } else {
+        $form_fields = [];
+    }
+
     $registration = $existing;
     $registration['version'] = RM_REGISTRATION_VERSION;
     $registration['mode'] = $mode;
     $registration['form']['preset'] = $preset;
-    $registration['form']['fields'] = $existing_fields;
+    $registration['form']['fields'] = $form_fields;
     $registration['form']['scope'] = $existing_scope;
     $registration['group']['min'] = $group_min;
     $registration['group']['max'] = $group_max;
     $registration['pricing']['model'] = $pricing_model;
+    $registration['pricing']['currency'] = $currency;
     $registration['pricing']['base_price'] = $base_price;
     $registration['pricing']['slots'] = $existing_slots;
 
@@ -303,21 +462,60 @@ function rm_normalize_registration_settings_input(array $input, array $existing_
 }
 
 /**
- * Merge registration settings into bss_events.settings JSON.
+ * Merge registration settings into event settings JSON (bss_events or CPT post meta).
  *
  * @param array<string, mixed> $registration
  * @return array{ok: bool, error: string}
  */
-function rm_save_event_registration_settings(int $event_id, array $registration): array
+function rm_save_event_registration_settings(int $event_id, array $registration, string $source = ''): array
 {
-    global $wpdb;
-
     if ($event_id < 1) {
         return [
             'ok'    => false,
             'error' => 'Invalid event id.',
         ];
     }
+
+    $source = rm_normalize_event_source($source);
+
+    if ($source === 'cpt') {
+        $post = get_post($event_id);
+        if (!$post instanceof WP_Post || $post->post_type !== 'event') {
+            return [
+                'ok'    => false,
+                'error' => 'Event could not be found.',
+            ];
+        }
+
+        $settings = [];
+        $raw = get_post_meta($event_id, 'settings', true);
+        if (is_string($raw) && trim($raw) !== '') {
+            $decoded = json_decode($raw, true);
+            if (is_array($decoded)) {
+                $settings = $decoded;
+            }
+        } elseif (is_array($raw)) {
+            $settings = $raw;
+        }
+
+        $settings['registration'] = $registration;
+        $encoded = wp_json_encode($settings);
+        if (!is_string($encoded) || $encoded === '') {
+            return [
+                'ok'    => false,
+                'error' => 'Failed to encode registration settings.',
+            ];
+        }
+
+        update_post_meta($event_id, 'settings', $encoded);
+
+        return [
+            'ok'    => true,
+            'error' => '',
+        ];
+    }
+
+    global $wpdb;
 
     $row = $wpdb->get_row(
         $wpdb->prepare('SELECT `settings` FROM `bss_events` WHERE `id` = %d LIMIT 1', $event_id),

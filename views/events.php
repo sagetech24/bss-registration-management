@@ -95,6 +95,7 @@
             <div class="bg-white border border-slate-200 rounded-xl shadow-sm p-5">
                 <h3 class="text-lg font-semibold">Quick Tips</h3>
                 <ul class="mt-3 space-y-2 text-sm text-slate-600">
+                    <li>New Events (WordPress EVENT posts) appear above legacy bss_events cards.</li>
                     <li>Use the date and year filters to narrow the event list.</li>
                     <li>Use search to match title, program code, venue, and description.</li>
                     <li>Open <span class="font-medium text-slate-800">Dashboard</span> for settings, packages, and summary stats.</li>
@@ -109,11 +110,128 @@
                 <div class="p-4 bg-rose-50 border border-rose-200 rounded-lg text-rose-800">
                     <?php echo esc_html($error_message); ?>
                 </div>
-            <?php elseif (empty($events)) : ?>
+            <?php endif; ?>
+
+            <?php
+            $cpt_events = isset($cpt_events) && is_array($cpt_events) ? $cpt_events : [];
+            $has_cpt_events = rm_count_filtered_events($cpt_events) > 0;
+            $has_legacy_events = !empty($events) && rm_count_filtered_events($events) > 0;
+            ?>
+
+            <?php if ($has_cpt_events) : ?>
+                <div class="mb-10">
+                    <div class="flex items-baseline justify-between gap-3 mb-4">
+                        <h3 class="text-2xl font-semibold text-slate-900">New Events</h3>
+                        <p class="text-sm text-slate-500">WordPress EVENT posts</p>
+                    </div>
+                    <?php foreach ($cpt_events as $year => $events_list) : ?>
+                        <?php if (!is_array($events_list) || count($events_list) === 0) {
+                            continue;
+                        } ?>
+                        <div class="mt-6">
+                            <h4 class="text-lg font-semibold text-slate-700 mb-3"><?php echo esc_html((string) $year); ?></h4>
+                            <div class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
+                                <?php foreach ($events_list as $event) : ?>
+                                    <?php
+                                    if (!is_array($event)) {
+                                        continue;
+                                    }
+                                    $card = rm_present_event_card($event, $page_url);
+                                    ?>
+                                    <article class="bg-white border border-indigo-200 rounded-xl overflow-hidden shadow-sm flex flex-col h-full">
+                                        <?php if ($card['thumb_url'] !== '') : ?>
+                                            <img class="h-48 w-full object-cover" src="<?php echo esc_url($card['thumb_url']); ?>" alt="<?php echo esc_attr($card['title']); ?>" />
+                                        <?php else : ?>
+                                            <div class="h-48 w-full bg-slate-100 flex items-center justify-center text-slate-400 text-sm">
+                                                No image
+                                            </div>
+                                        <?php endif; ?>
+
+                                        <div class="p-4 flex-1">
+                                            <div class="flex items-start justify-between gap-3">
+                                                <div class="min-w-0">
+                                                    <h4 class="font-semibold text-slate-900"><?php echo esc_html($card['title']); ?></h4>
+                                                    <?php if ($card['program_code'] !== '') : ?>
+                                                        <p class="text-xs mt-1 inline-flex items-center rounded-full bg-indigo-50 px-2 py-1 text-[10px] font-bold font-mono text-indigo-700">
+                                                            <?php echo esc_html(rtrim($card['program_code'], '_')); ?>
+                                                        </p>
+                                                    <?php endif; ?>
+                                                </div>
+                                            </div>
+
+                                            <?php if ($card['date_block'] !== '') : ?>
+                                                <p class="text-xs text-slate-700 mt-3 truncate">
+                                                    <strong>Date:</strong> &nbsp;
+                                                    <?php echo $card['date_block']; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped ?>
+                                                </p>
+                                            <?php endif; ?>
+
+                                            <?php if ($card['venue_show'] !== '') : ?>
+                                                <p class="text-xs text-slate-700 mt-1 truncate"><strong>Venue:</strong> &nbsp;
+                                                <?php echo esc_html($card['venue_show']); ?></p>
+                                            <?php endif; ?>
+
+                                            <?php if (!empty($card['categories']) && is_array($card['categories'])) : ?>
+                                                <div class="mt-3 flex flex-wrap gap-1.5">
+                                                    <?php foreach ($card['categories'] as $category_name) : ?>
+                                                        <span class="inline-flex items-center rounded-full border border-slate-200 bg-slate-100 px-2 py-0.5 text-[10px] font-medium text-slate-700">
+                                                            <?php echo esc_html((string) $category_name); ?>
+                                                        </span>
+                                                    <?php endforeach; ?>
+                                                </div>
+                                            <?php endif; ?>
+                                        </div>
+                                        <div class="border-t border-slate-200 mt-auto">
+                                            <div class="flex justify-center items-center gap-2 py-2 px-2.5">
+                                                <div class="text-center">
+                                                    <a href="<?php echo esc_url($card['profile_href']); ?>" class="text-xs font-medium text-indigo-700 hover:text-indigo-900">
+                                                        Dashboard
+                                                    </a>
+                                                </div>
+                                                <span class="text-slate-400">|</span>
+                                                <div class="text-center">
+                                                    <a href="<?php echo esc_url($card['registrants_href']); ?>" class="text-xs font-medium text-indigo-700 hover:text-indigo-900">
+                                                        Registrants
+                                                    </a>
+                                                </div>
+                                                <?php if ($card['registration_href'] !== '') : ?>
+                                                    <span class="text-slate-400">|</span>
+                                                    <div class="text-center">
+                                                        <a href="<?php echo esc_url($card['registration_href']); ?>" class="text-xs font-medium text-indigo-700 hover:text-indigo-900" target="_blank" rel="noopener noreferrer">
+                                                            Form
+                                                        </a>
+                                                    </div>
+                                                <?php endif; ?>
+                                                <!-- display this if it s CTP events and not legacy events -->
+                                                <?php if ($card['edit_url'] !== '') : ?>
+                                                    <span class="text-slate-400">|</span>
+                                                    <div class="text-center">
+                                                        <a href="<?php echo esc_url($card['edit_url']); ?>" class="text-xs font-medium text-indigo-700 hover:text-indigo-900" target="_blank" rel="noopener noreferrer">
+                                                            Edit
+                                                        </a>
+                                                    </div>
+                                                <?php endif; ?>
+                                            </div>
+                                        </div>
+                                    </article>
+                                <?php endforeach; ?>
+                            </div>
+                        </div>
+                    <?php endforeach; ?>
+                </div>
+            <?php endif; ?>
+
+            <?php if (empty($error_message) && !$has_cpt_events && !$has_legacy_events) : ?>
                 <div class="p-6 text-slate-600 border border-slate-200 rounded-xl bg-white">
                     No events found for this filter.
                 </div>
-            <?php else : ?>
+            <?php elseif ($has_legacy_events) : ?>
+                <?php if ($has_cpt_events) : ?>
+                    <div class="flex items-baseline justify-between gap-3 mb-4">
+                        <h3 class="text-2xl font-semibold text-slate-900">Legacy Events</h3>
+                        <p class="text-sm text-slate-500">From bss_events</p>
+                    </div>
+                <?php endif; ?>
                 <?php foreach ($events as $year => $events_list) : ?>
                     <?php if (!is_array($events_list) || count($events_list) === 0) continue; ?>
 

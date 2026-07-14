@@ -300,10 +300,8 @@ function rm_present_event_promotion(array $promotion): array
 {
     $limits = rm_promotion_group_limits($promotion);
     $price = (float) ($promotion['package_price'] ?? 0);
-    $decimals = floor($price) === $price ? 0 : 2;
-    $price_display = $price > 0
-        ? '$' . number_format_i18n($price, $decimals)
-        : 'FREE';
+    $promo_currency = (string) ($promotion['_currency'] ?? 'SGD');
+    $price_display = rm_format_currency($price, $promo_currency);
 
     $member_rule = '';
     if ($limits['require_all_members']) {

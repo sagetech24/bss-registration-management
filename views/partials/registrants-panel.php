@@ -39,6 +39,7 @@ document.addEventListener('alpine:init', () => {
         profileUrl: <?php echo wp_json_encode($registrants_config['profileUrl']); ?>,
         eventId: <?php echo (int) $registrants_config['eventId']; ?>,
         eventIsFree: <?php echo !empty($registrants_config['eventIsFree']) ? 'true' : 'false'; ?>,
+        eventCurrency: <?php echo wp_json_encode($registrants_config['eventCurrency'] ?? 'SGD'); ?>,
         async init() {
             if (this.eventId < 1) {
                 this.loading = false;
@@ -189,7 +190,7 @@ document.addEventListener('alpine:init', () => {
         },
         formatAmount(value) {
             const amount = Number(value || 0);
-            return '$' + amount.toLocaleString(undefined, {
+            return this.eventCurrency + ' ' + amount.toLocaleString(undefined, {
                 minimumFractionDigits: 2,
                 maximumFractionDigits: 2,
             });

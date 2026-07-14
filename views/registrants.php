@@ -40,8 +40,9 @@ $aside_time = is_array($selected_event) && !empty($selected_event['time'])
 $aside_venue = is_array($selected_event) && !empty($selected_event['venue'])
     ? (string) $selected_event['venue']
     : 'N/A';
+$event_currency = is_array($selected_event) ? rm_registration_currency($selected_event) : 'SGD';
 $aside_price = is_array($selected_event) && (float) ($selected_event['price'] ?? 0) > 0
-    ? '$' . number_format_i18n((float) $selected_event['price'], 2)
+    ? rm_format_currency((float) $selected_event['price'], $event_currency)
     : 'FREE';
 $event_is_free = is_array($selected_event) && rm_event_is_free($selected_event);
 $registration_form_url = $selected_event_code !== ''
@@ -53,6 +54,7 @@ $registrants_config = [
     'profileUrl'         => esc_url_raw($profile_api_url),
     'eventId'            => $selected_event_id,
     'eventIsFree'        => $event_is_free,
+    'eventCurrency'      => $event_currency,
     'initialPackageFilter' => rm_get_package_filter(),
 ];
 ?>
@@ -88,6 +90,7 @@ document.addEventListener('alpine:init', () => {
         profileUrl: <?php echo wp_json_encode($registrants_config['profileUrl']); ?>,
         eventId: <?php echo (int) $registrants_config['eventId']; ?>,
         eventIsFree: <?php echo !empty($registrants_config['eventIsFree']) ? 'true' : 'false'; ?>,
+        eventCurrency: <?php echo wp_json_encode($registrants_config['eventCurrency'] ?? 'SGD'); ?>,
         async init() {
             if (this.eventId < 1) {
                 this.loading = false;
@@ -238,7 +241,7 @@ document.addEventListener('alpine:init', () => {
         },
         formatAmount(value) {
             const amount = Number(value || 0);
-            return '$' + amount.toLocaleString(undefined, {
+            return this.eventCurrency + ' ' + amount.toLocaleString(undefined, {
                 minimumFractionDigits: 2,
                 maximumFractionDigits: 2,
             });

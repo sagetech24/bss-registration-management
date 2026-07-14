@@ -140,12 +140,28 @@ function rm_registration_order_number_exists(string $order_number, int $event_id
 }
 
 /**
+ * Build a registration order number: {programCode}_{###}
+ * Example: CCP012026_001
+ */
+function rm_format_registration_order_number(string $program_code, int $sequence): string
+{
+    $program_code = rtrim(trim($program_code), '_');
+    $iterate_count = str_pad((string) max(0, $sequence), 3, '0', STR_PAD_LEFT);
+
+    if ($program_code === '') {
+        return $iterate_count;
+    }
+
+    return $program_code . '_' . $iterate_count;
+}
+
+/**
  * Atomically increment lastId and build an order number from programCode + sequence.
- * Format: {programCode}{###}, e.g. ABCS123_009.
+ * Format: {programCode}_{###}, e.g. CCP012026_001.
  *
  * @return array{ok: bool, order_number: string, error: string}
  */
-function rm_allocate_registration_order_number(int $event_id): array
+function rm_allocate_registration_order_number(int $event_id, string $source = ''): array
 {
     global $wpdb;
 
@@ -154,6 +170,89 @@ function rm_allocate_registration_order_number(int $event_id): array
             'ok'           => false,
             'order_number' => '',
             'error'        => 'This event could not be found.',
+        ];
+    }
+
+    $source = rm_normalize_event_source($source);
+
+    if ($source === 'cpt') {
+        $event = rm_get_cpt_event_by_id($event_id);
+        if ($event === null) {
+            return [
+                'ok'           => false,
+                'order_number' => '',
+                'error'        => 'This event could not be found.',
+            ];
+        }
+
+        $program_code = isset($event['programCode']) ? trim((string) $event['programCode']) : '';
+        if ($program_code === '') {
+            return [
+                'ok'           => false,
+                'order_number' => '',
+                'error'        => 'This event is not configured for registration.',
+            ];
+        }
+
+        $wpdb->query('START TRANSACTION');
+
+        $meta_table = $wpdb->postmeta;
+        $current = $wpdb->get_var(
+            $wpdb->prepare(
+                "SELECT meta_value FROM {$meta_table} WHERE post_id = %d AND meta_key = 'lastId' LIMIT 1 FOR UPDATE",
+                $event_id
+            )
+        );
+
+        $next = ((int) $current) + 1;
+        if ($current === null) {
+            $inserted = $wpdb->insert(
+                $meta_table,
+                [
+                    'post_id'    => $event_id,
+                    'meta_key'   => 'lastId',
+                    'meta_value' => (string) $next,
+                ],
+                ['%d', '%s', '%s']
+            );
+            if (!$inserted) {
+                $wpdb->query('ROLLBACK');
+
+                return [
+                    'ok'           => false,
+                    'order_number' => '',
+                    'error'        => 'Registration could not be completed. Please try again.',
+                ];
+            }
+        } else {
+            $updated = $wpdb->update(
+                $meta_table,
+                ['meta_value' => (string) $next],
+                [
+                    'post_id'  => $event_id,
+                    'meta_key' => 'lastId',
+                ],
+                ['%s'],
+                ['%d', '%s']
+            );
+            if ($updated === false) {
+                $wpdb->query('ROLLBACK');
+
+                return [
+                    'ok'           => false,
+                    'order_number' => '',
+                    'error'        => 'Registration could not be completed. Please try again.',
+                ];
+            }
+        }
+
+        $wpdb->query('COMMIT');
+        clean_post_cache($event_id);
+
+        return [
+            'ok'           => true,
+            'order_number' => rm_format_registration_order_number($program_code, $next),
+            'error'        => '',
         ];
     }
 
@@ -207,11 +306,9 @@ function rm_allocate_registration_order_number(int $event_id): array
 
     $wpdb->query('COMMIT');
 
-    $iterate_count = str_pad((string) ((int) $row['lastId']), 3, '0', STR_PAD_LEFT);
-
     return [
         'ok'           => true,
-        'order_number' => $program_code . $iterate_count,
+        'order_number' => rm_format_registration_order_number($program_code, (int) $row['lastId']),
         'error'        => '',
     ];
 }
@@ -221,9 +318,9 @@ function rm_allocate_registration_order_number(int $event_id): array
  *
  * @return array{ok: bool, order_number: string, error: string}
  */
-function rm_generate_registration_order_number(int $event_id): array
+function rm_generate_registration_order_number(int $event_id, string $source = ''): array
 {
-    $event_gate = rm_validate_event_registration($event_id);
+    $event_gate = rm_validate_event_registration($event_id, $source);
     if (!$event_gate['ok']) {
         return [
             'ok'           => false,
@@ -232,7 +329,7 @@ function rm_generate_registration_order_number(int $event_id): array
         ];
     }
 
-    return rm_allocate_registration_order_number($event_id);
+    return rm_allocate_registration_order_number($event_id, $source);
 }
 
 /**
@@ -288,7 +385,8 @@ function rm_submit_registration(array $event, array $input): array
     global $wpdb;
 
     $event_id = isset($event['id']) ? absint($event['id']) : 0;
-    $event_gate = rm_validate_event_registration($event_id);
+    $source = rm_event_source_value($event);
+    $event_gate = rm_validate_event_registration($event_id, $source);
     if (!$event_gate['ok']) {
         return [
             'ok'           => false,
@@ -300,7 +398,7 @@ function rm_submit_registration(array $event, array $input): array
     }
 
     if (rm_event_is_free($event)) {
-        $order_result = rm_generate_registration_order_number($event_id);
+        $order_result = rm_generate_registration_order_number($event_id, $source);
         if (!$order_result['ok']) {
             return [
                 'ok'           => false,
@@ -581,12 +679,8 @@ function rm_present_registration_event(array $event): array
     $thumb_url = isset($event['thumb']) ? trim((string) $event['thumb']) : '';
 
     $price_num = rm_event_registration_price($event);
-    if ($price_num > 0) {
-        $decimals = floor($price_num) === $price_num ? 0 : 2;
-        $amount_display = '$' . number_format_i18n($price_num, $decimals);
-    } else {
-        $amount_display = 'FREE';
-    }
+    $event_currency = rm_registration_currency($event);
+    $amount_display = rm_format_currency($price_num, $event_currency);
 
     return [
         'title'          => $title,

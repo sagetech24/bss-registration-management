@@ -375,8 +375,18 @@ function rm_payment_format_api_error(?array $data, int $status_code = 0): string
 /**
  * @return list<string>
  */
-function rm_payment_methods(string $environment): array
+function rm_payment_methods(string $environment, string $currency = 'SGD'): array
 {
+    $currency = strtoupper(sanitize_key($currency));
+    $hitpay_currency = function_exists('rm_registration_currency_for_hitpay')
+        ? rm_registration_currency_for_hitpay($currency)
+        : $currency;
+
+    // PayNow is SGD-only; non-SGD checkouts use card.
+    if ($hitpay_currency !== 'SGD') {
+        return ['cards'];
+    }
+
     if ($environment === 'live') {
         return ['paynow_online', 'cards'];
     }
@@ -535,6 +545,8 @@ function rm_payment_create_request(
 ): array {
     $event_id = isset($event['id']) ? absint($event['id']) : 0;
     $environment = rm_payment_environment($event_id);
+    $currency = rm_registration_currency($event);
+    $hitpay_currency = rm_registration_currency_for_hitpay($currency);
 
     $full_name = trim(
         ($registrant['christianName'] ?? '') . ' ' . ($registrant['familyName'] ?? '')
@@ -554,8 +566,8 @@ function rm_payment_create_request(
 
     $payload = [
         'amount'                  => round($amount, 2),
-        'payment_methods'         => rm_payment_methods($environment),
-        'currency'                => 'SGD',
+        'payment_methods'         => rm_payment_methods($environment, $currency),
+        'currency'                => $hitpay_currency,
         'name'                    => $full_name,
         'email'                   => $registrant['email'] ?? '',
         'phone'                   => $registrant['contact'] ?? '',
