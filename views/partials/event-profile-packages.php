@@ -251,11 +251,11 @@ document.addEventListener('alpine:init', () => {
     <div
         x-show="modalOpen"
         x-cloak
-        class="fixed inset-0 -top-8 z-40 flex items-center justify-center p-4"
+        class="fixed inset-0 -top-2 z-40 flex items-center justify-center p-4"
         style="display: none;"
     >
         <div class="absolute inset-0 bg-slate-900/40" @click="closeModal()"></div>
-        <div class="relative w-full max-w-lg bg-white rounded-xl shadow-xl border border-slate-200 max-h-[90vh] overflow-y-auto">
+        <div class="relative w-full max-w-xl bg-white rounded-xl shadow-xl border border-slate-200 max-h-[97vh] overflow-y-auto">
             <div class="px-5 py-4 border-b border-slate-200 flex items-center justify-between">
                 <h3 class="text-lg font-semibold text-slate-900" x-text="form.id ? 'Edit package' : 'Add package'"></h3>
                 <button type="button" class="text-slate-400 hover:text-slate-600" @click="closeModal()">&times;</button>
@@ -284,6 +284,11 @@ document.addEventListener('alpine:init', () => {
                         <option value="group_flat">Group flat</option>
                         <option value="group_per_head">Group per-head</option>
                     </select>
+                    <div class="text-[10px] text-slate-500 mt-1 flex flex-col">
+                        <em><strong class="text-slate-800">Individual:</strong> Price apply to individual registrant.</em>
+                        <em><strong class="text-slate-800">Group flat:</strong> Price apply to all members in the group.</em>
+                        <em><strong class="text-slate-800">Group per-head:</strong> Price apply to each registrant in the group.</em>
+                    </div>
                 </div>
                 <div class="grid grid-cols-2 gap-3">
                     <div>
@@ -295,13 +300,25 @@ document.addEventListener('alpine:init', () => {
                         <input type="number" min="1" name="member_max" x-model="form.member_max" class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none" />
                     </div>
                 </div>
-                <div>
-                    <label class="block text-sm font-medium text-slate-700 mb-1.5">Package price</label>
-                    <input type="number" min="0" step="0.01" name="package_price" x-model="form.package_price" class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none" />
+                <div class="grid grid-cols-2 gap-3">
+                    <div>
+                        <label class="block text-sm font-medium text-slate-700 mb-1.5">Package price</label>
+                        <div class="flex">
+                            <span class="inline-flex items-center rounded-l-lg border border-r-0 border-slate-300 bg-slate-50 px-3 text-sm text-slate-500"><?php echo esc_html((string) ($event_currency ?? 'SGD')); ?></span>
+                            <input type="number" min="0" step="0.01" name="package_price" x-model="form.package_price" class="w-full rounded-r-lg rounded-l-none border border-slate-300 px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none" />
+                        </div>
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-slate-700 mb-1.5">Sort order</label>
+                        <input type="number" min="0" name="sort_order" x-model="form.sort_order" class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none" />
+                    </div>
                 </div>
-                <label class="flex items-center gap-2 text-sm text-slate-700">
+                <label class="flex items-start gap-2 text-sm text-slate-700">
                     <input type="checkbox" name="require_all_members" value="1" x-model="form.require_all_members" class="rounded border-slate-300 text-indigo-700 focus:ring-indigo-600" />
-                    Require all members at checkout
+                    <div>
+                        <p class="text-sm font-medium text-slate-700">Require all members at checkout</p>
+                        <p class="text-[11px] text-slate-500 leading-tight"><strong>Strict mode:</strong> All members must be present at checkout otherwise add later. (Applied to group flat and group per-head modes only)</p>
+                    </div>
                 </label>
                 <label class="flex items-center gap-2 text-sm text-slate-700">
                     <input type="hidden" name="is_active" value="0" />
@@ -317,10 +334,6 @@ document.addEventListener('alpine:init', () => {
                         <label class="block text-sm font-medium text-slate-700 mb-1.5">Valid until</label>
                         <input type="datetime-local" name="valid_until" x-model="form.valid_until_local" class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none" />
                     </div>
-                </div>
-                <div>
-                    <label class="block text-sm font-medium text-slate-700 mb-1.5">Sort order</label>
-                    <input type="number" min="0" name="sort_order" x-model="form.sort_order" class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none" />
                 </div>
                 <div class="flex justify-end gap-2 pt-2">
                     <button type="button" class="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50" @click="closeModal()">Cancel</button>
