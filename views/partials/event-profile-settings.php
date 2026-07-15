@@ -37,8 +37,10 @@ document.addEventListener('alpine:init', () => {
         mode: <?php echo wp_json_encode($mode_value); ?>,
         formPreset: <?php echo wp_json_encode($preset_value); ?>,
         customFields: <?php echo wp_json_encode($admin_custom_fields); ?>,
+        showCustomFields: false,
         guestsEnabled: <?php echo $guests_enabled ? 'true' : 'false'; ?>,
         guestFields: <?php echo wp_json_encode($admin_guest_fields); ?>,
+        showGuestFields: false,
         addGuestField() {
             this.guestFields.push({
                 key: '',
@@ -47,6 +49,7 @@ document.addEventListener('alpine:init', () => {
                 required: true,
                 optionsText: '',
             });
+            this.showGuestFields = true;
         },
         removeGuestField(index) {
             this.guestFields.splice(index, 1);
@@ -59,6 +62,7 @@ document.addEventListener('alpine:init', () => {
                 required: true,
                 optionsText: '',
             });
+            this.showCustomFields = true;
         },
         removeCustomField(index) {
             this.customFields.splice(index, 1);
@@ -190,7 +194,27 @@ document.addEventListener('alpine:init', () => {
                             <input type="hidden" name="guest_fields_submitted" value="1" />
                             <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
                                 <div>
-                                    <p class="text-sm font-medium text-rose-800">Guest form fields</p>
+                                    <div class="flex flex-wrap items-center gap-2">
+                                        <p class="text-sm font-medium text-rose-800">Guest form fields</p>
+                                        <button
+                                            type="button"
+                                            class="inline-flex items-center gap-1 border bg-rose-100 rounded-md px-2 py-0.5 text-xs font-medium text-rose-700 hover:bg-rose-50 transition"
+                                            @click="showGuestFields = !showGuestFields"
+                                        >
+                                            <span x-text="showGuestFields ? 'Show less' : 'Show more'"></span>
+                                            <svg
+                                                xmlns="http://www.w3.org/2000/svg"
+                                                fill="none"
+                                                viewBox="0 0 24 24"
+                                                stroke-width="2"
+                                                stroke="currentColor"
+                                                class="size-3.5 transition-transform duration-300"
+                                                :class="showGuestFields ? 'rotate-180' : ''"
+                                            >
+                                                <path stroke-linecap="round" stroke-linejoin="round" d="m19.5 8.25-7.5 7.5-7.5-7.5" />
+                                            </svg>
+                                        </button>
+                                    </div>
                                     <p class="mt-1 text-xs text-slate-500">Define what information to collect for each guest (e.g. Name, Age).</p>
                                 </div>
                                 <button
@@ -201,78 +225,85 @@ document.addEventListener('alpine:init', () => {
                                     Add field
                                 </button>
                             </div>
-    
-                            <div class="mt-4 space-y-3" x-show="guestFields.length > 0">
-                                <template x-for="(gf, gi) in guestFields" :key="gi">
-                                    <div class="rounded-lg border border-slate-200 bg-slate-50 p-3 space-y-3">
-                                        <input type="hidden" :name="'guest_fields[' + gi + '][key]'" :value="gf.key" />
-                                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                                            <div>
-                                                <label class="block text-xs font-medium text-slate-600 mb-1" :for="'rm_guest_field_label_' + gi">Label</label>
-                                                <input
-                                                    type="text"
-                                                    class="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none"
-                                                    :id="'rm_guest_field_label_' + gi"
-                                                    :name="'guest_fields[' + gi + '][label]'"
-                                                    x-model="gf.label"
-                                                    placeholder="e.g. Given name, Age"
-                                                    required
-                                                />
+
+                            <div
+                                class="grid transition-[grid-template-rows] duration-300 ease-in-out"
+                                :class="showGuestFields ? 'grid-rows-[1fr]' : 'grid-rows-[0fr]'"
+                            >
+                                <div class="overflow-hidden">
+                                    <div class="mt-4 space-y-3" x-show="guestFields.length > 0">
+                                        <template x-for="(gf, gi) in guestFields" :key="gi">
+                                            <div class="rounded-lg border border-slate-200 bg-slate-50 p-3 space-y-3">
+                                                <input type="hidden" :name="'guest_fields[' + gi + '][key]'" :value="gf.key" />
+                                                <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                                    <div>
+                                                        <label class="block text-xs font-medium text-slate-600 mb-1" :for="'rm_guest_field_label_' + gi">Label</label>
+                                                        <input
+                                                            type="text"
+                                                            class="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none"
+                                                            :id="'rm_guest_field_label_' + gi"
+                                                            :name="'guest_fields[' + gi + '][label]'"
+                                                            x-model="gf.label"
+                                                            placeholder="e.g. Given name, Age"
+                                                            required
+                                                        />
+                                                    </div>
+                                                    <div>
+                                                        <label class="block text-xs font-medium text-slate-600 mb-1" :for="'rm_guest_field_type_' + gi">Type</label>
+                                                        <select
+                                                            class="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none"
+                                                            :id="'rm_guest_field_type_' + gi"
+                                                            :name="'guest_fields[' + gi + '][type]'"
+                                                            x-model="gf.type"
+                                                        >
+                                                            <?php foreach ($custom_field_types as $type_key) : ?>
+                                                                <option value="<?php echo esc_attr($type_key); ?>"><?php echo esc_html(ucfirst(str_replace('_', ' ', $type_key))); ?></option>
+                                                            <?php endforeach; ?>
+                                                        </select>
+                                                    </div>
+                                                </div>
+
+                                                <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                                                    <label class="inline-flex items-center gap-2 text-sm text-slate-700">
+                                                        <input
+                                                            type="checkbox"
+                                                            class="rounded border-slate-300 text-indigo-700 focus:ring-indigo-600"
+                                                            :name="'guest_fields[' + gi + '][required]'"
+                                                            value="1"
+                                                            x-model="gf.required"
+                                                        />
+                                                        Required field
+                                                    </label>
+                                                    <button
+                                                        type="button"
+                                                        class="text-sm font-medium text-rose-700 hover:text-rose-900"
+                                                        @click="removeGuestField(gi)"
+                                                    >
+                                                        Remove
+                                                    </button>
+                                                </div>
+
+                                                <div x-show="needsOptions(gf.type)" x-cloak>
+                                                    <label class="block text-xs font-medium text-slate-600 mb-1" :for="'rm_guest_field_options_' + gi">Options</label>
+                                                    <textarea
+                                                        class="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none"
+                                                        :id="'rm_guest_field_options_' + gi"
+                                                        :name="'guest_fields[' + gi + '][options]'"
+                                                        x-model="gf.optionsText"
+                                                        rows="3"
+                                                        placeholder="Option A&#10;Option B"
+                                                    ></textarea>
+                                                    <p class="mt-1 text-[11px] text-slate-500">One option per line (or comma-separated).</p>
+                                                </div>
                                             </div>
-                                            <div>
-                                                <label class="block text-xs font-medium text-slate-600 mb-1" :for="'rm_guest_field_type_' + gi">Type</label>
-                                                <select
-                                                    class="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none"
-                                                    :id="'rm_guest_field_type_' + gi"
-                                                    :name="'guest_fields[' + gi + '][type]'"
-                                                    x-model="gf.type"
-                                                >
-                                                    <?php foreach ($custom_field_types as $type_key) : ?>
-                                                        <option value="<?php echo esc_attr($type_key); ?>"><?php echo esc_html(ucfirst(str_replace('_', ' ', $type_key))); ?></option>
-                                                    <?php endforeach; ?>
-                                                </select>
-                                            </div>
-                                        </div>
-    
-                                        <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-                                            <label class="inline-flex items-center gap-2 text-sm text-slate-700">
-                                                <input
-                                                    type="checkbox"
-                                                    class="rounded border-slate-300 text-indigo-700 focus:ring-indigo-600"
-                                                    :name="'guest_fields[' + gi + '][required]'"
-                                                    value="1"
-                                                    x-model="gf.required"
-                                                />
-                                                Required field
-                                            </label>
-                                            <button
-                                                type="button"
-                                                class="text-sm font-medium text-rose-700 hover:text-rose-900"
-                                                @click="removeGuestField(gi)"
-                                            >
-                                                Remove
-                                            </button>
-                                        </div>
-    
-                                        <div x-show="needsOptions(gf.type)" x-cloak>
-                                            <label class="block text-xs font-medium text-slate-600 mb-1" :for="'rm_guest_field_options_' + gi">Options</label>
-                                            <textarea
-                                                class="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none"
-                                                :id="'rm_guest_field_options_' + gi"
-                                                :name="'guest_fields[' + gi + '][options]'"
-                                                x-model="gf.optionsText"
-                                                rows="3"
-                                                placeholder="Option A&#10;Option B"
-                                            ></textarea>
-                                            <p class="mt-1 text-[11px] text-slate-500">One option per line (or comma-separated).</p>
-                                        </div>
+                                        </template>
                                     </div>
-                                </template>
+
+                                    <p class="mt-3 text-xs text-slate-500" x-show="guestFields.length === 0">
+                                        No guest fields yet. Use <span class="font-medium text-slate-700">Add field</span> to define guest form fields such as Name, Age, etc.
+                                    </p>
+                                </div>
                             </div>
-    
-                            <p class="mt-3 text-xs text-slate-500" x-show="guestFields.length === 0">
-                                No guest fields yet. Use <span class="font-medium text-slate-700">Add field</span> to define guest form fields such as Name, Age, etc.
-                            </p>
                         </div>
                     </div>
                 </fieldset>
@@ -369,7 +400,27 @@ document.addEventListener('alpine:init', () => {
                         <div class="rounded-lg border border-slate-200 bg-white p-4">
                             <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
                                 <div>
-                                    <p class="text-sm font-medium text-slate-800">Additional custom fields</p>
+                                    <div class="flex flex-wrap items-center gap-2">
+                                        <p class="text-sm font-medium text-slate-800">Additional custom fields</p>
+                                        <button
+                                            type="button"
+                                            class="inline-flex items-center border border-amber-300 bg-amber-50 gap-1 rounded-md px-2 py-0.5 text-xs font-medium text-amber-700 hover:bg-amber-100 transition"
+                                            @click="showCustomFields = !showCustomFields"
+                                        >
+                                            <span x-text="showCustomFields ? 'Show less' : 'Show more'"></span>
+                                            <svg
+                                                xmlns="http://www.w3.org/2000/svg"
+                                                fill="none"
+                                                viewBox="0 0 24 24"
+                                                stroke-width="2"
+                                                stroke="currentColor"
+                                                class="size-3.5 transition-transform duration-300"
+                                                :class="showCustomFields ? 'rotate-180' : ''"
+                                            >
+                                                <path stroke-linecap="round" stroke-linejoin="round" d="m19.5 8.25-7.5 7.5-7.5-7.5" />
+                                            </svg>
+                                        </button>
+                                    </div>
                                     <p class="mt-1 text-xs text-slate-500">Add fields such as Age, Employer, or Civil Status. Select/radio options go one per line.</p>
                                 </div>
                                 <button
@@ -381,77 +432,84 @@ document.addEventListener('alpine:init', () => {
                                 </button>
                             </div>
 
-                            <div class="mt-4 space-y-3" x-show="customFields.length > 0">
-                                <template x-for="(field, index) in customFields" :key="index">
-                                    <div class="rounded-lg border border-slate-200 bg-slate-50 p-3 space-y-3">
-                                        <input type="hidden" :name="'custom_fields[' + index + '][key]'" :value="field.key" />
-                                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                                            <div>
-                                                <label class="block text-xs font-medium text-slate-600 mb-1" :for="'rm_custom_label_' + index">Label</label>
-                                                <input
-                                                    type="text"
-                                                    class="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none"
-                                                    :id="'rm_custom_label_' + index"
-                                                    :name="'custom_fields[' + index + '][label]'"
-                                                    x-model="field.label"
-                                                    placeholder="e.g. Age, Employer, Civil Status"
-                                                    required
-                                                />
-                                            </div>
-                                            <div>
-                                                <label class="block text-xs font-medium text-slate-600 mb-1" :for="'rm_custom_type_' + index">Type</label>
-                                                <select
-                                                    class="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none"
-                                                    :id="'rm_custom_type_' + index"
-                                                    :name="'custom_fields[' + index + '][type]'"
-                                                    x-model="field.type"
-                                                >
-                                                    <?php foreach ($custom_field_types as $type_key) : ?>
-                                                        <option value="<?php echo esc_attr($type_key); ?>"><?php echo esc_html(ucfirst(str_replace('_', ' ', $type_key))); ?></option>
-                                                    <?php endforeach; ?>
-                                                </select>
-                                            </div>
-                                        </div>
+                            <div
+                                class="grid transition-[grid-template-rows] duration-300 ease-in-out"
+                                :class="showCustomFields ? 'grid-rows-[1fr]' : 'grid-rows-[0fr]'"
+                            >
+                                <div class="overflow-hidden">
+                                    <div class="mt-4 space-y-3" x-show="customFields.length > 0">
+                                        <template x-for="(field, index) in customFields" :key="index">
+                                            <div class="rounded-lg border border-slate-200 bg-slate-50 p-3 space-y-3">
+                                                <input type="hidden" :name="'custom_fields[' + index + '][key]'" :value="field.key" />
+                                                <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                                    <div>
+                                                        <label class="block text-xs font-medium text-slate-600 mb-1" :for="'rm_custom_label_' + index">Label</label>
+                                                        <input
+                                                            type="text"
+                                                            class="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none"
+                                                            :id="'rm_custom_label_' + index"
+                                                            :name="'custom_fields[' + index + '][label]'"
+                                                            x-model="field.label"
+                                                            placeholder="e.g. Age, Employer, Civil Status"
+                                                            required
+                                                        />
+                                                    </div>
+                                                    <div>
+                                                        <label class="block text-xs font-medium text-slate-600 mb-1" :for="'rm_custom_type_' + index">Type</label>
+                                                        <select
+                                                            class="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none"
+                                                            :id="'rm_custom_type_' + index"
+                                                            :name="'custom_fields[' + index + '][type]'"
+                                                            x-model="field.type"
+                                                        >
+                                                            <?php foreach ($custom_field_types as $type_key) : ?>
+                                                                <option value="<?php echo esc_attr($type_key); ?>"><?php echo esc_html(ucfirst(str_replace('_', ' ', $type_key))); ?></option>
+                                                            <?php endforeach; ?>
+                                                        </select>
+                                                    </div>
+                                                </div>
 
-                                        <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-                                            <label class="inline-flex items-center gap-2 text-sm text-slate-700">
-                                                <input
-                                                    type="checkbox"
-                                                    class="rounded border-slate-300 text-indigo-700 focus:ring-indigo-600"
-                                                    :name="'custom_fields[' + index + '][required]'"
-                                                    value="1"
-                                                    x-model="field.required"
-                                                />
-                                                Required field
-                                            </label>
-                                            <button
-                                                type="button"
-                                                class="text-sm font-medium text-rose-700 hover:text-rose-900"
-                                                @click="removeCustomField(index)"
-                                            >
-                                                Remove
-                                            </button>
-                                        </div>
+                                                <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                                                    <label class="inline-flex items-center gap-2 text-sm text-slate-700">
+                                                        <input
+                                                            type="checkbox"
+                                                            class="rounded border-slate-300 text-indigo-700 focus:ring-indigo-600"
+                                                            :name="'custom_fields[' + index + '][required]'"
+                                                            value="1"
+                                                            x-model="field.required"
+                                                        />
+                                                        Required field
+                                                    </label>
+                                                    <button
+                                                        type="button"
+                                                        class="text-sm font-medium text-rose-700 hover:text-rose-900"
+                                                        @click="removeCustomField(index)"
+                                                    >
+                                                        Remove
+                                                    </button>
+                                                </div>
 
-                                        <div x-show="needsOptions(field.type)" x-cloak>
-                                            <label class="block text-xs font-medium text-slate-600 mb-1" :for="'rm_custom_options_' + index">Options</label>
-                                            <textarea
-                                                class="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none"
-                                                :id="'rm_custom_options_' + index"
-                                                :name="'custom_fields[' + index + '][options]'"
-                                                x-model="field.optionsText"
-                                                rows="3"
-                                                placeholder="Single&#10;Married&#10;Widow"
-                                            ></textarea>
-                                            <p class="mt-1 text-[11px] text-slate-500">One option per line (or comma-separated).</p>
-                                        </div>
+                                                <div x-show="needsOptions(field.type)" x-cloak>
+                                                    <label class="block text-xs font-medium text-slate-600 mb-1" :for="'rm_custom_options_' + index">Options</label>
+                                                    <textarea
+                                                        class="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none"
+                                                        :id="'rm_custom_options_' + index"
+                                                        :name="'custom_fields[' + index + '][options]'"
+                                                        x-model="field.optionsText"
+                                                        rows="3"
+                                                        placeholder="Single&#10;Married&#10;Widow"
+                                                    ></textarea>
+                                                    <p class="mt-1 text-[11px] text-slate-500">One option per line (or comma-separated).</p>
+                                                </div>
+                                            </div>
+                                        </template>
                                     </div>
-                                </template>
-                            </div>
 
-                            <p class="mt-3 text-center p-4 border border-slate-200 rounded-lg text-xs text-slate-500" x-show="customFields.length === 0">
-                                No additional fields yet. Use <span class="font-medium text-slate-700">Add field</span> to create Age, Employer, Civil Status, and more.
-                            </p>
+                                    <p class="mt-3 text-center p-4 border border-slate-200 rounded-lg text-xs text-slate-500" x-show="customFields.length === 0">
+                                        No additional fields yet. Use <span class="font-medium text-slate-700">Add field</span> to create Age, Employer, Civil Status, and more.
+                                    </p>
+                                </div>
+                            </div>
                         </div>
                     </div>
                 </template>

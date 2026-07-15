@@ -466,8 +466,9 @@ function rm_build_event_profile_context(array $events_by_year, string $requested
     if ($event_id > 0) {
         $db_fetch = rm_fetch_registrants_from_db($event_id, $selected_event);
         if ($db_fetch['error'] === '') {
-            $summary = rm_registrants_summary($db_fetch['registrants']);
-            $package_summary = rm_registrants_package_summary($db_fetch['registrants']);
+            $table_registrants = rm_registrants_exclude_addons($db_fetch['registrants']);
+            $summary = rm_registrants_summary($table_registrants);
+            $package_summary = rm_registrants_package_summary($table_registrants);
         }
     }
 

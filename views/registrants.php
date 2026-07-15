@@ -85,6 +85,10 @@ document.addEventListener('alpine:init', () => {
         profileLoading: false,
         profileError: '',
         profile: null,
+        guestsModalOpen: false,
+        guestsModalTitle: '',
+        guestsModalPrimary: '',
+        guestsModalRows: [],
         apiUrl: <?php echo wp_json_encode($registrants_config['apiUrl']); ?>,
         paymentDetailsUrl: <?php echo wp_json_encode($registrants_config['paymentDetailsUrl']); ?>,
         profileUrl: <?php echo wp_json_encode($registrants_config['profileUrl']); ?>,
@@ -232,9 +236,25 @@ document.addEventListener('alpine:init', () => {
             this.profileError = '';
             this.profile = null;
         },
+        openGuestsModal(row) {
+            if (!row?.guest_count || !Array.isArray(row.guests) || row.guests.length < 1) {
+                return;
+            }
+            this.guestsModalOpen = true;
+            this.guestsModalTitle = row.guest_button_label || 'Guests';
+            this.guestsModalPrimary = (row.full_name || '') + (row.order_number ? ' · ' + row.order_number : '');
+            this.guestsModalRows = row.guests;
+        },
+        closeGuestsModal() {
+            this.guestsModalOpen = false;
+            this.guestsModalTitle = '';
+            this.guestsModalPrimary = '';
+            this.guestsModalRows = [];
+        },
         closeAllModals() {
             this.closeModal();
             this.closeProfileModal();
+            this.closeGuestsModal();
         },
         formatCount(value) {
             return Number(value || 0).toLocaleString();
@@ -523,7 +543,7 @@ document.addEventListener('alpine:init', () => {
                                         </div>
                                     </td>
                                     <td class="whitespace-nowrap px-4 py-3 text-xs">
-                                        <div class="flex flex-wrap gap-1">
+                                        <div class="flex flex-wrap items-center gap-1.5">
                                             <span
                                                 class="inline-flex max-w-[12rem] truncate rounded-full px-2.5 py-1 text-xs font-semibold"
                                                 :class="row.event_promotion_id
@@ -532,11 +552,13 @@ document.addEventListener('alpine:init', () => {
                                                 :title="row.package_label || 'Individual'"
                                                 x-text="row.package_label || 'Individual'"
                                             ></span>
-                                            <span
-                                                x-show="row.is_guest"
-                                                class="inline-flex rounded-full bg-amber-100 text-amber-800 px-2.5 py-1 text-xs font-semibold"
-                                                x-text="row.role_label || 'Guest'"
-                                            ></span>
+                                            <button
+                                                x-show="row.guest_count > 0"
+                                                type="button"
+                                                class="inline-flex items-center rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 text-xs font-semibold text-amber-800 transition hover:bg-amber-100"
+                                                @click="openGuestsModal(row)"
+                                                x-text="row.guest_button_label"
+                                            ></button>
                                         </div>
                                     </td>
                                     <td x-show="!eventIsFree" class="px-4 py-3 text-xs text-slate-700">
@@ -842,6 +864,86 @@ document.addEventListener('alpine:init', () => {
                             type="button"
                             class="rounded-lg bg-slate-100 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-200 transition"
                             @click="closeProfileModal()"
+                        >
+                            Close
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <div
+                x-show="guestsModalOpen"
+                x-transition.opacity
+                class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50"
+                style="display: none;"
+                @click.self="closeGuestsModal()"
+                role="dialog"
+                aria-modal="true"
+                aria-labelledby="registrant-guests-modal-title"
+            >
+                <div
+                    x-show="guestsModalOpen"
+                    x-transition
+                    class="w-full max-w-2xl max-h-[90vh] overflow-y-auto rounded-xl bg-white shadow-xl border border-slate-200"
+                    @click.stop
+                >
+                    <div class="flex items-start justify-between gap-4 border-b border-slate-200 px-5 py-4">
+                        <div>
+                            <h3 id="registrant-guests-modal-title" class="text-lg font-semibold text-slate-900" x-text="guestsModalTitle || 'Guests'"></h3>
+                            <p class="mt-1 text-sm text-slate-600" x-text="guestsModalPrimary"></p>
+                        </div>
+                        <button
+                            type="button"
+                            class="rounded-lg p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-600 transition"
+                            @click="closeGuestsModal()"
+                            aria-label="Close"
+                        >
+                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="size-5">
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M6 18 18 6M6 6l12 12" />
+                            </svg>
+                        </button>
+                    </div>
+
+                    <div class="px-5 py-4 space-y-4">
+                        <template x-for="(guest, gIdx) in guestsModalRows" :key="guest.registrant_id || guest.order_number || gIdx">
+                            <div class="rounded-lg border border-slate-200 bg-slate-50/80 p-4">
+                                <div class="flex flex-wrap items-start justify-between gap-2">
+                                    <div>
+                                        <p class="text-sm font-semibold text-slate-900" x-text="guest.full_name || 'N/A'"></p>
+                                        <p class="mt-0.5 text-xs font-mono text-slate-500" x-text="guest.order_number || 'N/A'"></p>
+                                    </div>
+                                    <div class="flex flex-wrap items-center gap-1.5">
+                                        <span
+                                            class="inline-flex rounded-full bg-amber-100 px-2.5 py-1 text-xs font-semibold text-amber-800"
+                                            x-text="guest.role_label || 'Guest'"
+                                        ></span>
+                                        <span
+                                            x-show="guest.amount_display && guest.amount_display !== '—'"
+                                            class="inline-flex rounded-full bg-white border border-slate-200 px-2.5 py-1 text-xs font-medium text-slate-700"
+                                            x-text="eventCurrency + ' ' + guest.amount_display"
+                                        ></span>
+                                    </div>
+                                </div>
+                                <dl
+                                    x-show="guest.fields && guest.fields.length"
+                                    class="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-2 text-sm"
+                                >
+                                    <template x-for="field in guest.fields" :key="field.key">
+                                        <div>
+                                            <dt class="text-[11px] font-medium uppercase tracking-wide text-slate-500" x-text="field.label"></dt>
+                                            <dd class="mt-0.5 text-slate-800 break-words" x-text="field.value"></dd>
+                                        </div>
+                                    </template>
+                                </dl>
+                            </div>
+                        </template>
+                    </div>
+
+                    <div class="flex justify-end border-t border-slate-200 px-5 py-4">
+                        <button
+                            type="button"
+                            class="rounded-lg bg-slate-100 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-200 transition"
+                            @click="closeGuestsModal()"
                         >
                             Close
                         </button>

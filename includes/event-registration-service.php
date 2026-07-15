@@ -270,7 +270,8 @@ function rm_v2_insert_confirmed_registration(
             $guest_rows,
             $pricing,
             'confirmed',
-            count($member_rows)
+            count($member_rows),
+            $order_numbers[0] ?? ''
         );
 
         if (!$guest_line_result['ok']) {
@@ -367,10 +368,31 @@ function rm_v2_finalize_paid_registration(int $pending_id, string $payment_reque
         ];
     }
 
+    $member_lines = [];
+    $guest_lines = [];
+    foreach ($lines as $line) {
+        if (!is_array($line)) {
+            continue;
+        }
+        if (($line['role'] ?? '') === 'addon') {
+            $guest_lines[] = $line;
+        } else {
+            $member_lines[] = $line;
+        }
+    }
+
+    if ($member_lines === []) {
+        return [
+            'ok'           => false,
+            'order_number' => '',
+            'error'        => 'Pending registrants could not be found.',
+        ];
+    }
+
     $wpdb->query('START TRANSACTION');
 
     $order_numbers = [];
-    foreach ($lines as $index => $line) {
+    foreach ($member_lines as $index => $line) {
         $order_result = rm_allocate_registration_order_number($event_id, $source);
         if (!$order_result['ok']) {
             $wpdb->query('ROLLBACK');
@@ -385,11 +407,13 @@ function rm_v2_finalize_paid_registration(int $pending_id, string $payment_reque
         $order_numbers[$index] = $order_result['order_number'];
     }
 
+    $primary_order_number = $order_numbers[0] ?? '';
+
     unset($header['id']);
     $header['payment_status'] = 'paid';
     $header['payment_request_id'] = sanitize_text_field($payment_request_id);
     $header['payment_option'] = $payment_option === '' ? 'N/A' : sanitize_text_field($payment_option);
-    $header['primary_order_number'] = $order_numbers[0] ?? '';
+    $header['primary_order_number'] = $primary_order_number;
     $header['paid_at'] = current_time('mysql');
     $header['updated_at'] = current_time('mysql');
 
@@ -406,10 +430,29 @@ function rm_v2_finalize_paid_registration(int $pending_id, string $payment_reque
 
     $registration_id = (int) $wpdb->insert_id;
 
-    foreach ($lines as $index => $line) {
+    foreach ($member_lines as $index => $line) {
         unset($line['id']);
         $line['registration_id'] = $registration_id;
         $line['order_number'] = $order_numbers[$index] ?? '';
+        $line['status'] = 'confirmed';
+        $line['updated_at'] = current_time('mysql');
+
+        $line_inserted = $wpdb->insert('event_registrant', $line);
+        if (!$line_inserted) {
+            $wpdb->query('ROLLBACK');
+
+            return [
+                'ok'           => false,
+                'order_number' => '',
+                'error'        => 'Registration could not be saved. Please try again.',
+            ];
+        }
+    }
+
+    foreach ($guest_lines as $gi => $line) {
+        unset($line['id']);
+        $line['registration_id'] = $registration_id;
+        $line['order_number'] = rm_format_guest_order_number($primary_order_number, $gi);
         $line['status'] = 'confirmed';
         $line['updated_at'] = current_time('mysql');
 
@@ -432,7 +475,7 @@ function rm_v2_finalize_paid_registration(int $pending_id, string $payment_reque
 
     return [
         'ok'           => true,
-        'order_number' => $order_numbers[0] ?? '',
+        'order_number' => $primary_order_number,
         'error'        => '',
     ];
 }
@@ -552,6 +595,7 @@ function rm_v2_insert_registrant_lines(
  * Insert guest (addon) line items into a registrant table.
  *
  * Guest rows use `role = 'addon'` and are indexed after the member rows.
+ * Order numbers are sub-numbers of the primary: {primary}-01, {primary}-02, …
  * Core-mapped fields (given_name, family_name, etc.) go into columns;
  * everything else is stored in custom_responses.
  *
@@ -565,11 +609,13 @@ function rm_v2_insert_guest_lines(
     array $guest_rows,
     array $pricing,
     string $status,
-    int $member_offset = 0
+    int $member_offset = 0,
+    string $primary_order_number = ''
 ): array {
     global $wpdb;
 
     $guest_price = (float) ($pricing['guest_price'] ?? 0);
+    $primary_order_number = trim($primary_order_number);
 
     foreach ($guest_rows as $gi => $guest_row) {
         $core = $guest_row['core'] ?? [];
@@ -582,7 +628,9 @@ function rm_v2_insert_guest_lines(
             'event_id'         => $event_id,
             'member_index'     => $member_offset + $gi,
             'role'             => 'addon',
-            'order_number'     => '',
+            'order_number'     => $primary_order_number !== ''
+                ? rm_format_guest_order_number($primary_order_number, $gi)
+                : '',
             'nric'             => $core['nric'] ?? null,
             'title'            => $core['title'] ?? null,
             'christian_name'   => $core['christian_name'] ?? null,

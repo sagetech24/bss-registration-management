@@ -64,7 +64,9 @@ function rm_find_event_by_code(array $events, string $event_code): ?array
  */
 function rm_present_registrant_row(array $registrant, bool $is_pending = false): array
 {
-    $first_name = trim((string) ($registrant['christianName'] ?? $registrant['givenName'] ?? ''));
+    $christian_name = trim((string) ($registrant['christianName'] ?? ''));
+    $given_name = trim((string) ($registrant['givenName'] ?? ''));
+    $first_name = $christian_name !== '' ? $christian_name : $given_name;
     $last_name = trim((string) ($registrant['familyName'] ?? ''));
     $full_name = trim($first_name . ' ' . $last_name);
 
@@ -153,6 +155,17 @@ function rm_present_registrant_row(array $registrant, bool $is_pending = false):
         $role_label = (string) ($registrant['_guest_label'] ?? 'Guest');
     }
 
+    $guests = [];
+    if (!empty($registrant['_guests']) && is_array($registrant['_guests'])) {
+        foreach ($registrant['_guests'] as $guest) {
+            if (is_array($guest)) {
+                $guests[] = $guest;
+            }
+        }
+    }
+    $guest_count = count($guests);
+    $guest_button_label = (string) ($registrant['_guest_button_label'] ?? '');
+
     return [
         'registrant_id'      => isset($registrant['id']) ? (int) $registrant['id'] : 0,
         'full_name'          => $full_name,
@@ -176,7 +189,11 @@ function rm_present_registrant_row(array $registrant, bool $is_pending = false):
         'email_sent_label'   => $email_sent ? 'Yes' : 'No',
         'is_pending'         => $is_pending,
         'is_guest'           => $is_guest,
+        'role'               => $role,
         'role_label'         => $role_label,
+        'guest_count'        => $guest_count,
+        'guest_button_label' => $guest_button_label,
+        'guests'             => $guests,
         'package_label'      => trim((string) ($registrant['_package_label'] ?? 'Individual')) !== ''
             ? (string) ($registrant['_package_label'] ?? 'Individual')
             : 'Individual',
@@ -185,6 +202,161 @@ function rm_present_registrant_row(array $registrant, bool $is_pending = false):
             : null,
         'registration_id'    => isset($registrant['_registration_id']) ? (int) $registrant['_registration_id'] : 0,
     ];
+}
+
+/**
+ * Present a guest/addon row for the registrants guests modal.
+ *
+ * @param array<string, mixed> $registrant
+ * @return array<string, mixed>
+ */
+function rm_present_guest_row(array $registrant): array
+{
+    $christian_name = trim((string) ($registrant['christianName'] ?? ''));
+    $given_name = trim((string) ($registrant['givenName'] ?? ''));
+    $first_name = $christian_name !== '' ? $christian_name : $given_name;
+    $last_name = trim((string) ($registrant['familyName'] ?? ''));
+    $full_name = trim($first_name . ' ' . $last_name);
+    if ($full_name === '') {
+        $full_name = 'N/A';
+    }
+
+    $fields = [];
+    $core_map = [
+        'email'       => 'Email',
+        'contact'     => 'Contact',
+        'title'       => 'Title',
+        'nric'        => 'NRIC',
+        'churchName'  => 'Church',
+    ];
+    foreach ($core_map as $key => $label) {
+        $value = trim((string) ($registrant[$key] ?? ''));
+        if ($value !== '') {
+            $fields[] = [
+                'key'   => $key,
+                'label' => $label,
+                'value' => $value,
+            ];
+        }
+    }
+
+    $note = $registrant['note'] ?? '';
+    if (is_string($note) && $note !== '' && $note !== '{}') {
+        $decoded = json_decode($note, true);
+        if (is_array($decoded)) {
+            foreach ($decoded as $key => $value) {
+                if (!is_string($key)) {
+                    continue;
+                }
+                $display = $value;
+                if (is_bool($display)) {
+                    $display = $display ? 'Yes' : 'No';
+                } elseif (is_array($display)) {
+                    $display = implode(', ', array_map('strval', $display));
+                } else {
+                    $display = trim((string) $display);
+                }
+                if ($display === '') {
+                    continue;
+                }
+                $fields[] = [
+                    'key'   => $key,
+                    'label' => ucwords(str_replace(['_', '-'], ' ', $key)),
+                    'value' => $display,
+                ];
+            }
+        }
+    }
+
+    $amount_raw = $registrant['amount'] ?? null;
+    $amount_display = '—';
+    if ($amount_raw !== null && $amount_raw !== '' && is_numeric($amount_raw) && (float) $amount_raw > 0) {
+        $amount_display = number_format_i18n((float) $amount_raw, 2);
+    }
+
+    return [
+        'registrant_id'  => isset($registrant['id']) ? (int) $registrant['id'] : 0,
+        'order_number'   => trim((string) ($registrant['orderNumber'] ?? '')),
+        'full_name'      => $full_name,
+        'role_label'     => (string) ($registrant['_guest_label'] ?? 'Guest'),
+        'amount_display' => $amount_display,
+        'fields'         => $fields,
+    ];
+}
+
+/**
+ * Exclude addon (guest) rows — table shows primary and member only.
+ *
+ * @param array<int, array<string, mixed>> $registrants
+ * @return array<int, array<string, mixed>>
+ */
+function rm_registrants_exclude_addons(array $registrants): array
+{
+    $out = [];
+    foreach ($registrants as $row) {
+        if (!is_array($row)) {
+            continue;
+        }
+        if (($row['_role'] ?? '') === 'addon') {
+            continue;
+        }
+        $out[] = $row;
+    }
+
+    return $out;
+}
+
+/**
+ * Attach guest addons to each primary registrant in a registration group.
+ *
+ * @param array<int, array<string, mixed>> $registrants
+ * @return array<int, array<string, mixed>>
+ */
+function rm_attach_guests_to_primary_registrants(array $registrants): array
+{
+    $guests_by_registration = [];
+    foreach ($registrants as $row) {
+        if (!is_array($row) || ($row['_role'] ?? '') !== 'addon') {
+            continue;
+        }
+        $registration_id = isset($row['_registration_id']) ? (int) $row['_registration_id'] : 0;
+        if ($registration_id < 1) {
+            continue;
+        }
+        if (!isset($guests_by_registration[$registration_id])) {
+            $guests_by_registration[$registration_id] = [];
+        }
+        $guests_by_registration[$registration_id][] = rm_present_guest_row($row);
+    }
+
+    foreach ($registrants as &$row) {
+        if (!is_array($row)) {
+            continue;
+        }
+        if (($row['_role'] ?? '') !== 'primary') {
+            $row['_guests'] = [];
+            $row['_guest_button_label'] = '';
+            continue;
+        }
+
+        $registration_id = isset($row['_registration_id']) ? (int) $row['_registration_id'] : 0;
+        $guests = $guests_by_registration[$registration_id] ?? [];
+        $count = count($guests);
+        $row['_guests'] = $guests;
+
+        if ($count < 1) {
+            $row['_guest_button_label'] = '';
+            continue;
+        }
+
+        $singular = (string) ($row['_guest_label_singular'] ?? $row['_guest_label'] ?? 'Guest');
+        $plural = (string) ($row['_guest_label_plural'] ?? 'Guests');
+        $label = $count === 1 ? $singular : $plural;
+        $row['_guest_button_label'] = $count . ' ' . $label;
+    }
+    unset($row);
+
+    return $registrants;
 }
 
 /**
@@ -340,7 +512,9 @@ function rm_present_registrant_profile(array $registrant): array
         ];
     }
 
-    $first_name = trim((string) ($registrant['christianName'] ?? $registrant['givenName'] ?? ''));
+    $christian_name = trim((string) ($registrant['christianName'] ?? ''));
+    $given_name = trim((string) ($registrant['givenName'] ?? ''));
+    $first_name = $christian_name !== '' ? $christian_name : $given_name;
     $last_name = trim((string) ($registrant['familyName'] ?? ''));
     $full_name = trim($first_name . ' ' . $last_name);
     if ($full_name === '') {
@@ -861,8 +1035,10 @@ function rm_build_event_registrants_data(): array
     $event = rm_get_event_by_id($event_id, $source);
     $db_fetch = rm_fetch_registrants_from_db($event_id, $event);
     $all_registrants = $db_fetch['error'] === '' ? $db_fetch['registrants'] : [];
-    $package_summary = rm_registrants_package_summary($all_registrants);
-    $filtered_registrants = rm_filter_registrants_by_package($all_registrants, $package_filter);
+    $all_registrants = rm_attach_guests_to_primary_registrants($all_registrants);
+    $table_registrants = rm_registrants_exclude_addons($all_registrants);
+    $package_summary = rm_registrants_package_summary($table_registrants);
+    $filtered_registrants = rm_filter_registrants_by_package($table_registrants, $package_filter);
 
     $package_options = [
         ['value' => 'all', 'label' => 'All packages'],

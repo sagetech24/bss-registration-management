@@ -204,11 +204,19 @@ function rm_fetch_v2_registrants_from_db(int $event_id, ?array $event = null): a
         ];
     }
 
-    $guest_label = 'Guest';
+    $guest_label_singular = 'Guest';
+    $guest_label_plural = 'Guests';
     if (is_array($event)) {
         $config = rm_parse_registration_config($event);
         if (!empty($config['guests']['enabled'])) {
-            $guest_label = (string) ($config['guests']['label_singular'] ?? 'Guest');
+            $guest_label_singular = (string) ($config['guests']['label_singular'] ?? 'Guest');
+            $guest_label_plural = (string) ($config['guests']['label_plural'] ?? 'Guests');
+            if ($guest_label_singular === '') {
+                $guest_label_singular = 'Guest';
+            }
+            if ($guest_label_plural === '') {
+                $guest_label_plural = 'Guests';
+            }
         }
     }
 
@@ -264,9 +272,9 @@ function rm_fetch_v2_registrants_from_db(int $event_id, ?array $event = null): a
         );
 
         $registrant = rm_normalize_v2_registrant_row($row, $header);
-        if ($registrant['_role'] === 'addon') {
-            $registrant['_guest_label'] = $guest_label;
-        }
+        $registrant['_guest_label'] = $guest_label_singular;
+        $registrant['_guest_label_singular'] = $guest_label_singular;
+        $registrant['_guest_label_plural'] = $guest_label_plural;
         $normalized[] = $registrant;
     }
 

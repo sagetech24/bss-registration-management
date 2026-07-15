@@ -156,6 +156,22 @@ function rm_format_registration_order_number(string $program_code, int $sequence
 }
 
 /**
+ * Guest/addon order number as a sub of the primary: {primary}-01, {primary}-02, …
+ * $guest_index is 0-based.
+ */
+function rm_format_guest_order_number(string $primary_order_number, int $guest_index): string
+{
+    $primary_order_number = trim($primary_order_number);
+    if ($primary_order_number === '') {
+        return '';
+    }
+
+    $suffix = str_pad((string) max(1, $guest_index + 1), 2, '0', STR_PAD_LEFT);
+
+    return $primary_order_number . '-' . $suffix;
+}
+
+/**
  * Atomically increment lastId and build an order number from programCode + sequence.
  * Format: {programCode}_{###}, e.g. CCP012026_001.
  *
