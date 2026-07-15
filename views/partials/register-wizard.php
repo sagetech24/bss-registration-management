@@ -7,6 +7,7 @@ $members_input = is_array($members_input ?? null) ? $members_input : [];
 $guests_input = is_array($guests_input ?? null) ? $guests_input : [];
 $active_promotion = is_array($active_promotion ?? null) ? $active_promotion : null;
 $guest_schema = is_array($guest_schema ?? null) ? $guest_schema : ['fields' => [], 'enabled' => false, 'label_singular' => 'Guest', 'label_plural' => 'Guests', 'min' => 0, 'max' => 0, 'price' => 0];
+$event_currency = (string) ($event_currency ?? 'SGD');
 $mode = (string) ($registration_config['mode'] ?? 'group_flat');
 $require_all_members = !empty($group_limits['require_all_members']);
 $schema_json = wp_json_encode($form_schema);
@@ -24,7 +25,7 @@ $input_class = 'w-full rounded-lg border border-slate-300 bg-white px-3 py-2 tex
 
 <div
     x-data="rmRegisterWizard()"
-    x-init="init(<?php echo esc_attr($schema_json); ?>, <?php echo esc_attr($limits_json); ?>, <?php echo esc_attr($members_json); ?>, <?php echo esc_attr($pricing_json); ?>, <?php echo esc_attr($guest_schema_json); ?>, <?php echo esc_attr($guests_json); ?>)"
+    x-init="init(<?php echo esc_attr($schema_json); ?>, <?php echo esc_attr($limits_json); ?>, <?php echo esc_attr($members_json); ?>, <?php echo esc_attr($pricing_json); ?>, <?php echo esc_attr($guest_schema_json); ?>, <?php echo esc_attr($guests_json); ?>, <?php echo esc_attr(wp_json_encode($event_currency)); ?>)"
     class="space-y-6"
 >
     <div class="flex flex-wrap items-center gap-2 text-sm text-slate-600">
@@ -50,32 +51,34 @@ $input_class = 'w-full rounded-lg border border-slate-300 bg-white px-3 py-2 tex
         <input type="hidden" name="guests_json" :value="serializedGuests" />
 
         <div x-show="step === 0" class="space-y-4">
-            <h3 class="text-base font-semibold text-slate-900">Group leader</h3>
-            <div class="grid grid-cols-1 sm:grid-cols-2 gap-5">
-                <template x-for="field in schema.fields" :key="'leader-' + field.key">
-                    <div :class="wideField(field) ? 'sm:col-span-2' : ''">
-                        <label class="block text-sm font-medium text-slate-700 mb-2" x-text="field.label + (field.required ? ' *' : '')"></label>
-                        <template x-if="field.type === 'textarea'">
-                            <textarea class="<?php echo esc_attr($input_class); ?>" rows="3" x-model="members[0][field.key]"></textarea>
-                        </template>
-                        <template x-if="field.type === 'select'">
-                            <select class="<?php echo esc_attr($input_class); ?>" x-model="members[0][field.key]">
-                                <option value="">Please select</option>
-                                <template x-for="opt in (field.options || [])" :key="opt.value || opt">
-                                    <option :value="opt.value || opt" x-text="opt.label || opt"></option>
-                                </template>
-                            </select>
-                        </template>
-                        <template x-if="!['textarea','select','checkbox','checkbox_group','radio'].includes(field.type)">
-                            <input
-                                class="<?php echo esc_attr($input_class); ?>"
-                                :type="inputType(field.type)"
-                                x-model="members[0][field.key]"
-                            />
-                        </template>
-                    </div>
-                </template>
-            </div>
+            <fieldset class="rounded-lg border border-slate-200 p-4 space-y-4">
+                <legend class="text-sm font-medium text-slate-700 px-1">Group leader</legend>
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-5">
+                    <template x-for="field in schema.fields" :key="'leader-' + field.key">
+                        <div :class="wideField(field) ? 'sm:col-span-2' : ''">
+                            <label class="block text-sm font-medium text-slate-700 mb-2" x-text="field.label + (field.required ? ' *' : '')"></label>
+                            <template x-if="field.type === 'textarea'">
+                                <textarea class="<?php echo esc_attr($input_class); ?>" rows="3" x-model="members[0][field.key]"></textarea>
+                            </template>
+                            <template x-if="field.type === 'select'">
+                                <select class="<?php echo esc_attr($input_class); ?>" x-model="members[0][field.key]">
+                                    <option value="">Please select</option>
+                                    <template x-for="opt in (field.options || [])" :key="opt.value || opt">
+                                        <option :value="opt.value || opt" x-text="opt.label || opt"></option>
+                                    </template>
+                                </select>
+                            </template>
+                            <template x-if="!['textarea','select','checkbox','checkbox_group','radio'].includes(field.type)">
+                                <input
+                                    class="<?php echo esc_attr($input_class); ?>"
+                                    :type="inputType(field.type)"
+                                    x-model="members[0][field.key]"
+                                />
+                            </template>
+                        </div>
+                    </template>
+                </div>
+            </fieldset>
             <div class="pt-2 flex justify-end">
                 <button type="button" @click="nextFromLeader()" class="rounded-lg bg-indigo-700 px-5 py-2.5 text-sm font-medium text-white hover:bg-indigo-800">
                     Continue to members
@@ -84,67 +87,64 @@ $input_class = 'w-full rounded-lg border border-slate-300 bg-white px-3 py-2 tex
         </div>
 
         <div x-show="step === 1" class="space-y-4">
-            <div class="flex items-center justify-between">
-                <h3 class="text-base font-semibold text-slate-900">Additional members</h3>
-                <p class="text-sm text-slate-500"><span x-text="members.length"></span> of <span x-text="limits.max"></span></p>
-            </div>
+            <fieldset class="rounded-lg border border-slate-200 p-4 space-y-4">
+                <legend class="text-sm font-medium text-slate-700 px-1">
+                    Additional members
+                    <span class="text-slate-400 font-normal">(<span x-text="members.length"></span> of <span x-text="limits.max"></span>)</span>
+                </legend>
 
-            <template x-for="(member, mIndex) in members" :key="'wrap-' + mIndex">
-                <div x-show="mIndex > 0" class="rounded-lg border border-slate-200 p-4 space-y-4">
-                    <h4 class="text-sm font-medium text-slate-800">Member <span x-text="mIndex + 1"></span></h4>
-                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-5">
-                        <template x-for="field in schema.fields" :key="'m-' + mIndex + '-' + field.key">
-                            <div :class="wideField(field) ? 'sm:col-span-2' : ''">
-                                <label class="block text-sm font-medium text-slate-700 mb-2" x-text="field.label + (field.required ? ' *' : '')"></label>
-                                <template x-if="field.type === 'textarea'">
-                                    <textarea class="<?php echo esc_attr($input_class); ?>" rows="3" x-model="members[mIndex][field.key]"></textarea>
-                                </template>
-                                <template x-if="field.type === 'select'">
-                                    <select class="<?php echo esc_attr($input_class); ?>" x-model="members[mIndex][field.key]">
-                                        <option value="">Please select</option>
-                                        <template x-for="opt in (field.options || [])" :key="opt.value || opt">
-                                            <option :value="opt.value || opt" x-text="opt.label || opt"></option>
-                                        </template>
-                                    </select>
-                                </template>
-                                <template x-if="!['textarea','select','checkbox','checkbox_group','radio'].includes(field.type)">
-                                    <input class="<?php echo esc_attr($input_class); ?>" :type="inputType(field.type)" x-model="members[mIndex][field.key]" />
-                                </template>
-                            </div>
-                        </template>
+                <template x-for="(member, mIndex) in members" :key="'wrap-' + mIndex">
+                    <div x-show="mIndex > 0" class="rounded-lg border border-slate-200 p-4 space-y-4">
+                        <h4 class="text-sm font-medium text-slate-800">Member <span x-text="mIndex + 1"></span></h4>
+                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-5">
+                            <template x-for="field in schema.fields" :key="'m-' + mIndex + '-' + field.key">
+                                <div :class="wideField(field) ? 'sm:col-span-2' : ''">
+                                    <label class="block text-sm font-medium text-slate-700 mb-2" x-text="field.label + (field.required ? ' *' : '')"></label>
+                                    <template x-if="field.type === 'textarea'">
+                                        <textarea class="<?php echo esc_attr($input_class); ?>" rows="3" x-model="members[mIndex][field.key]"></textarea>
+                                    </template>
+                                    <template x-if="field.type === 'select'">
+                                        <select class="<?php echo esc_attr($input_class); ?>" x-model="members[mIndex][field.key]">
+                                            <option value="">Please select</option>
+                                            <template x-for="opt in (field.options || [])" :key="opt.value || opt">
+                                                <option :value="opt.value || opt" x-text="opt.label || opt"></option>
+                                            </template>
+                                        </select>
+                                    </template>
+                                    <template x-if="!['textarea','select','checkbox','checkbox_group','radio'].includes(field.type)">
+                                        <input class="<?php echo esc_attr($input_class); ?>" :type="inputType(field.type)" x-model="members[mIndex][field.key]" />
+                                    </template>
+                                </div>
+                            </template>
+                        </div>
                     </div>
-                </div>
-            </template>
+                </template>
 
-            <div class="flex gap-3">
-                <button
-                    type="button"
-                    x-show="!limits.require_all_members && members.length < limits.max"
-                    @click="addMember()"
-                    class="rounded-lg border border-indigo-200 bg-indigo-50 px-4 py-2 text-sm font-medium text-indigo-700 hover:bg-indigo-100"
-                >Add member</button>
-                <button
-                    type="button"
-                    x-show="!limits.require_all_members && members.length > limits.min"
-                    @click="removeMember()"
-                    class="rounded-lg border border-slate-200 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
-                >Remove last member</button>
-                <p x-show="limits.require_all_members" class="text-sm text-slate-500">
-                    This package requires exactly <span x-text="limits.max"></span> registrant(s).
-                </p>
-            </div>
+                <div class="flex gap-3">
+                    <button
+                        type="button"
+                        x-show="!limits.require_all_members && members.length < limits.max"
+                        @click="addMember()"
+                        class="rounded-lg border border-indigo-200 bg-indigo-50 px-4 py-2 text-sm font-medium text-indigo-700 hover:bg-indigo-100"
+                    >Add member</button>
+                    <button
+                        type="button"
+                        x-show="!limits.require_all_members && members.length > limits.min"
+                        @click="removeMember()"
+                        class="rounded-lg border border-slate-200 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+                    >Remove last member</button>
+                    <p x-show="limits.require_all_members" class="text-sm text-slate-500">
+                        This package requires exactly <span x-text="limits.max"></span> registrant(s).
+                    </p>
+                </div>
+            </fieldset>
 
             <template x-if="guestSchema.enabled">
-                <div class="mt-6 border-t border-slate-200 pt-6 space-y-4">
-                    <div class="flex items-center justify-between">
-                        <h3 class="text-base font-semibold text-slate-900" x-text="guestSchema.label_plural || 'Guests'"></h3>
-                        <p class="text-sm text-slate-500">
-                            <span x-text="guests.length"></span> of <span x-text="guestSchema.max"></span>
-                            <template x-if="guestSchema.price > 0">
-                                <span class="ml-1 text-slate-400">· <span x-text="'$' + parseFloat(guestSchema.price).toFixed(2)"></span> each</span>
-                            </template>
-                        </p>
-                    </div>
+                <fieldset class="rounded-lg border border-slate-200 p-4 space-y-4">
+                    <legend class="text-sm font-medium text-slate-700 px-1">
+                        <span x-text="guestSchema.label_plural || 'Guests'"></span>
+                        <span class="text-slate-400 font-normal">(<span x-text="guests.length"></span> of <span x-text="guestSchema.max"></span><template x-if="guestSchema.price > 0"><span> · <span x-text="formatCurrency(parseFloat(guestSchema.price))"></span> each</span></template>)</span>
+                    </legend>
 
                     <template x-for="(guest, gIdx) in guests" :key="'guest-' + gIdx">
                         <div class="rounded-lg border border-slate-200 p-4 space-y-4">
@@ -193,7 +193,7 @@ $input_class = 'w-full rounded-lg border border-slate-300 bg-white px-3 py-2 tex
                             Remove last <span x-text="(guestSchema.label_singular || 'guest').toLowerCase()"></span>
                         </button>
                     </div>
-                </div>
+                </fieldset>
             </template>
 
             <div class="pt-2 flex justify-between">
@@ -218,7 +218,10 @@ $input_class = 'w-full rounded-lg border border-slate-300 bg-white px-3 py-2 tex
                     <div class="p-4 flex items-start justify-between gap-4 bg-slate-50/50">
                         <div>
                             <p class="text-sm font-medium text-slate-900" x-text="guestLabel(guest, gIdx)"></p>
-                            <p class="text-xs text-slate-500" x-text="guestSchema.label_singular || 'Guest'"></p>
+                            <template x-for="field in guestSchema.fields" :key="'gs-' + gIdx + '-' + field.key">
+                                <p class="text-xs text-slate-500" x-show="guest[field.key] && guest[field.key] !== ''" x-text="field.label + ': ' + guest[field.key]"></p>
+                            </template>
+                            <!-- <p class="mt-0.5 text-[11px] font-medium text-indigo-600" x-text="guestSchema.label_singular || 'Guest'"></p> -->
                         </div>
                         <p class="text-sm font-medium text-slate-800" x-text="guestPriceDisplay()"></p>
                     </div>
@@ -256,7 +259,8 @@ function rmRegisterWizard() {
         serializedMembers: '[]',
         serializedGuests: '[]',
         pricing: {},
-        init(schema, limits, members, pricing, guestSchema, guestsInput) {
+        currency: 'SGD',
+        init(schema, limits, members, pricing, guestSchema, guestsInput, currency) {
             this.schema = schema || { fields: [] };
             this.guestSchema = Object.assign(
                 { fields: [], enabled: false, label_singular: 'Guest', label_plural: 'Guests', min: 0, max: 0, price: 0 },
@@ -264,6 +268,7 @@ function rmRegisterWizard() {
             );
             this.limits = Object.assign({ min: 1, max: 1, require_all_members: false }, limits || {});
             this.pricing = pricing || {};
+            this.currency = currency || 'SGD';
             this.members = Array.isArray(members) && members.length ? members : [this.emptyMember()];
             const target = this.limits.require_all_members ? this.limits.max : this.limits.min;
             while (this.members.length < target) this.addMember();
@@ -370,15 +375,18 @@ function rmRegisterWizard() {
             const label = this.guestSchema.label_singular || 'Guest';
             return label + ' ' + (index + 1) + (name ? ': ' + name : '');
         },
+        formatCurrency(amount) {
+            if (amount <= 0) return 'FREE';
+            const decimals = amount % 1 === 0 ? 0 : 2;
+            return this.currency + ' ' + amount.toFixed(decimals);
+        },
         memberPriceDisplay(index) {
             const item = (this.pricing.member_pricing || [])[index];
             if (!item) return '—';
-            const price = parseFloat(item.unit_price || 0);
-            return price > 0 ? '$' + price.toFixed(2) : 'FREE';
+            return this.formatCurrency(parseFloat(item.unit_price || 0));
         },
         guestPriceDisplay() {
-            const price = parseFloat(this.guestSchema.price || 0);
-            return price > 0 ? '$' + price.toFixed(2) : 'FREE';
+            return this.formatCurrency(parseFloat(this.guestSchema.price || 0));
         },
         get totalDisplay() {
             let total = 0;
@@ -390,7 +398,7 @@ function rmRegisterWizard() {
             if (this.guestSchema.enabled) {
                 total += this.guests.length * parseFloat(this.guestSchema.price || 0);
             }
-            return total > 0 ? '$' + total.toFixed(2) : 'FREE';
+            return this.formatCurrency(total);
         },
         prepareSubmit() {
             this.serializedMembers = JSON.stringify(this.members);

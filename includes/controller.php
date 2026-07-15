@@ -104,6 +104,7 @@ function rm_build_register_context(): array
         ? rm_present_event_promotion($promotion)
         : null;
     $context['registration_config'] = rm_effective_registration_config($event, $promotion);
+    $context['event_currency'] = rm_registration_currency($event);
     $context['form_schema'] = rm_parse_form_schema($event);
     $context['guest_schema'] = rm_parse_guest_form_schema($event);
     $context['is_group_mode'] = rm_effective_is_group_mode($event, $promotion);
