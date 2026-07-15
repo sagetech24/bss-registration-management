@@ -144,7 +144,11 @@ function rm_build_register_context(): array
         if ($members_post !== []) {
             $context['members_input'] = $members_post;
         } elseif (!$context['is_group_mode']) {
-            $context['members_input'] = [rm_form_responses_from_post($context['form_schema'])];
+            $context['members_input'] = [rm_form_responses_from_post(
+                $context['form_schema'],
+                '',
+                rm_registration_coverage(is_array($context['registration_config'] ?? null) ? $context['registration_config'] : [])
+            )];
         }
 
         $guests_post = rm_parse_guests_from_post();

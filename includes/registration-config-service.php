@@ -16,6 +16,9 @@ const RM_CURRENCY_USD = 'USD';
 const RM_CURRENCY_RMB = 'RMB';
 const RM_CURRENCY_AUD = 'AUD';
 
+const RM_EVENT_COVERAGE_LOCAL = 'local';
+const RM_EVENT_COVERAGE_INTERNATIONAL = 'international';
+
 /**
  * @return list<string>
  */
@@ -25,6 +28,17 @@ function rm_registration_modes(): array
         RM_REGISTRATION_MODE_INDIVIDUAL,
         RM_REGISTRATION_MODE_GROUP_FLAT,
         RM_REGISTRATION_MODE_GROUP_PER_HEAD,
+    ];
+}
+
+/**
+ * @return list<string>
+ */
+function rm_event_coverage_options(): array
+{
+    return [
+        RM_EVENT_COVERAGE_LOCAL,
+        RM_EVENT_COVERAGE_INTERNATIONAL,
     ];
 }
 
@@ -151,24 +165,25 @@ function rm_event_uses_v2_registration(array $event): bool
 function rm_registration_config_defaults(): array
 {
     return [
-        'version' => RM_REGISTRATION_VERSION,
-        'mode'    => RM_REGISTRATION_MODE_INDIVIDUAL,
-        'form'    => [
+        'version'  => RM_REGISTRATION_VERSION,
+        'mode'     => RM_REGISTRATION_MODE_INDIVIDUAL,
+        'coverage' => RM_EVENT_COVERAGE_LOCAL,
+        'form'     => [
             'preset' => RM_FORM_PRESET_FULL,
             'fields' => [],
             'scope'  => 'per_member',
         ],
-        'group'   => [
+        'group'    => [
             'min' => 1,
             'max' => 1,
         ],
-        'pricing' => [
+        'pricing'  => [
             'model'      => 'flat',
             'base_price' => null,
             'currency'   => RM_CURRENCY_SGD,
             'slots'      => [],
         ],
-        'guests' => [
+        'guests'   => [
             'enabled'        => false,
             'label_singular' => 'Guest',
             'label_plural'   => 'Guests',
@@ -180,6 +195,142 @@ function rm_registration_config_defaults(): array
             ],
         ],
     ];
+}
+
+/**
+ * Common international dial codes for contact number prepend.
+ *
+ * @return list<array{code: string, label: string, dial: string}>
+ */
+function rm_phone_country_codes(): array
+{
+    return [
+        ['code' => 'SG', 'label' => 'Singapore', 'dial' => '+65'],
+        ['code' => 'MY', 'label' => 'Malaysia', 'dial' => '+60'],
+        ['code' => 'ID', 'label' => 'Indonesia', 'dial' => '+62'],
+        ['code' => 'PH', 'label' => 'Philippines', 'dial' => '+63'],
+        ['code' => 'TH', 'label' => 'Thailand', 'dial' => '+66'],
+        ['code' => 'VN', 'label' => 'Vietnam', 'dial' => '+84'],
+        ['code' => 'BN', 'label' => 'Brunei', 'dial' => '+673'],
+        ['code' => 'HK', 'label' => 'Hong Kong', 'dial' => '+852'],
+        ['code' => 'MO', 'label' => 'Macau', 'dial' => '+853'],
+        ['code' => 'TW', 'label' => 'Taiwan', 'dial' => '+886'],
+        ['code' => 'CN', 'label' => 'China', 'dial' => '+86'],
+        ['code' => 'JP', 'label' => 'Japan', 'dial' => '+81'],
+        ['code' => 'KR', 'label' => 'South Korea', 'dial' => '+82'],
+        ['code' => 'IN', 'label' => 'India', 'dial' => '+91'],
+        ['code' => 'AU', 'label' => 'Australia', 'dial' => '+61'],
+        ['code' => 'NZ', 'label' => 'New Zealand', 'dial' => '+64'],
+        ['code' => 'GB', 'label' => 'United Kingdom', 'dial' => '+44'],
+        ['code' => 'US', 'label' => 'United States / Canada', 'dial' => '+1'],
+        ['code' => 'DE', 'label' => 'Germany', 'dial' => '+49'],
+        ['code' => 'FR', 'label' => 'France', 'dial' => '+33'],
+        ['code' => 'NL', 'label' => 'Netherlands', 'dial' => '+31'],
+        ['code' => 'CH', 'label' => 'Switzerland', 'dial' => '+41'],
+        ['code' => 'AE', 'label' => 'United Arab Emirates', 'dial' => '+971'],
+        ['code' => 'SA', 'label' => 'Saudi Arabia', 'dial' => '+966'],
+        ['code' => 'ZA', 'label' => 'South Africa', 'dial' => '+27'],
+    ];
+}
+
+/**
+ * Compose a full contact number from dial code + local digits.
+ */
+function rm_compose_phone_number(string $dial_code, string $local_number): string
+{
+    $dial = trim($dial_code);
+    if ($dial === '') {
+        $dial = '+65';
+    }
+    if ($dial[0] !== '+') {
+        $dial = '+' . ltrim($dial, '+');
+    }
+
+    $local = preg_replace('/\D+/', '', $local_number) ?? '';
+    $local = ltrim($local, '0');
+
+    $dial_digits = ltrim($dial, '+');
+    if ($local !== '' && str_starts_with($local, $dial_digits)) {
+        $local = substr($local, strlen($dial_digits)) ?: '';
+    }
+
+    if ($local === '') {
+        return '';
+    }
+
+    return $dial . $local;
+}
+
+/**
+ * Split a stored contact number into dial code + local digits for form display.
+ *
+ * @return array{dial: string, local: string}
+ */
+function rm_split_phone_number(string $full_number, string $coverage = RM_EVENT_COVERAGE_LOCAL): array
+{
+    $full = trim($full_number);
+    $default_dial = '+65';
+
+    if ($coverage === RM_EVENT_COVERAGE_LOCAL) {
+        $digits = preg_replace('/\D+/', '', $full) ?? '';
+        if (str_starts_with($digits, '65') && strlen($digits) > 8) {
+            $digits = substr($digits, 2);
+        }
+
+        return [
+            'dial'  => $default_dial,
+            'local' => $digits,
+        ];
+    }
+
+    if ($full === '') {
+        return [
+            'dial'  => $default_dial,
+            'local' => '',
+        ];
+    }
+
+    $normalized = $full;
+    if ($normalized[0] !== '+') {
+        $normalized = '+' . ltrim($normalized, '+');
+    }
+
+    $codes = rm_phone_country_codes();
+    usort($codes, static function (array $a, array $b): int {
+        return strlen($b['dial']) <=> strlen($a['dial']);
+    });
+
+    foreach ($codes as $country) {
+        $dial = (string) $country['dial'];
+        if (str_starts_with($normalized, $dial)) {
+            $local = substr($normalized, strlen($dial));
+            $local = preg_replace('/\D+/', '', (string) $local) ?? '';
+
+            return [
+                'dial'  => $dial,
+                'local' => $local,
+            ];
+        }
+    }
+
+    $digits = preg_replace('/\D+/', '', $full) ?? '';
+
+    return [
+        'dial'  => $default_dial,
+        'local' => $digits,
+    ];
+}
+
+/**
+ * @param array<string, mixed> $config
+ */
+function rm_registration_coverage(array $config): string
+{
+    $coverage = sanitize_key((string) ($config['coverage'] ?? RM_EVENT_COVERAGE_LOCAL));
+
+    return in_array($coverage, rm_event_coverage_options(), true)
+        ? $coverage
+        : RM_EVENT_COVERAGE_LOCAL;
 }
 
 /**
@@ -199,6 +350,11 @@ function rm_parse_registration_config(array $event): array
     if (!in_array($config['mode'], rm_registration_modes(), true)) {
         $config['mode'] = RM_REGISTRATION_MODE_INDIVIDUAL;
     }
+
+    $coverage = sanitize_key((string) ($config['coverage'] ?? RM_EVENT_COVERAGE_LOCAL));
+    $config['coverage'] = in_array($coverage, rm_event_coverage_options(), true)
+        ? $coverage
+        : RM_EVENT_COVERAGE_LOCAL;
 
     if (!in_array($config['form']['preset'], rm_form_presets(), true)) {
         $config['form']['preset'] = RM_FORM_PRESET_FULL;
@@ -314,10 +470,17 @@ function rm_present_registration_config(array $config): array
 
     $guests = isset($config['guests']) && is_array($config['guests']) ? $config['guests'] : [];
     $guests_enabled = !empty($guests['enabled']);
+    $coverage = rm_registration_coverage($config);
+    $coverage_labels = [
+        RM_EVENT_COVERAGE_LOCAL         => 'Local Event (Singapore Only)',
+        RM_EVENT_COVERAGE_INTERNATIONAL => 'International',
+    ];
 
     return [
         'mode'               => $mode,
         'mode_label'         => $mode_labels[$mode] ?? $mode,
+        'coverage'           => $coverage,
+        'coverage_label'     => $coverage_labels[$coverage] ?? $coverage,
         'preset'             => $preset,
         'preset_label'       => $preset_labels[$preset] ?? $preset,
         'group_min'          => (int) ($config['group']['min'] ?? 1),
@@ -351,6 +514,17 @@ function rm_normalize_registration_settings_input(array $input, array $existing_
         return [
             'ok'           => false,
             'error'        => 'Invalid registration mode.',
+            'registration' => [],
+        ];
+    }
+
+    $coverage = isset($input['coverage'])
+        ? sanitize_key((string) $input['coverage'])
+        : sanitize_key((string) ($existing['coverage'] ?? RM_EVENT_COVERAGE_LOCAL));
+    if (!in_array($coverage, rm_event_coverage_options(), true)) {
+        return [
+            'ok'           => false,
+            'error'        => 'Invalid event coverage.',
             'registration' => [],
         ];
     }
@@ -562,6 +736,7 @@ function rm_normalize_registration_settings_input(array $input, array $existing_
     $registration = $existing;
     $registration['version'] = RM_REGISTRATION_VERSION;
     $registration['mode'] = $mode;
+    $registration['coverage'] = $coverage;
     $registration['form']['preset'] = $preset;
     $registration['form']['fields'] = $form_fields;
     $registration['form']['scope'] = $existing_scope;

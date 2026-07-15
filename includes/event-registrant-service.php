@@ -72,7 +72,11 @@ function rm_submit_v2_registration(array $event): array
 
     if ($members_responses === []) {
         if ($config['mode'] === RM_REGISTRATION_MODE_INDIVIDUAL) {
-            $members_responses = [rm_form_responses_from_post($schema)];
+            $members_responses = [rm_form_responses_from_post(
+                $schema,
+                '',
+                rm_registration_coverage($config)
+            )];
         } else {
             return [
                 'ok'           => false,

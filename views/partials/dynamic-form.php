@@ -3,6 +3,7 @@
  * Loop schema fields and render each via form-field partial.
  *
  * Expected: $form_schema, $responses, $name_prefix, $error_prefix, $input_class, $form_errors
+ * Optional: $registration_config or $event_coverage for phone prepend behaviour
  */
 $schema_fields = is_array($form_schema['fields'] ?? null) ? $form_schema['fields'] : [];
 $responses = is_array($responses ?? null) ? $responses : [];
@@ -10,6 +11,10 @@ $name_prefix = (string) ($name_prefix ?? '');
 $error_prefix = (string) ($error_prefix ?? '');
 $input_class = (string) ($input_class ?? 'w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none');
 $form_errors = is_array($form_errors ?? null) ? $form_errors : [];
+if (!isset($event_coverage)) {
+    $registration_config = is_array($registration_config ?? null) ? $registration_config : [];
+    $event_coverage = rm_registration_coverage($registration_config);
+}
 ?>
 
 <div class="grid grid-cols-1 sm:grid-cols-2 gap-5">

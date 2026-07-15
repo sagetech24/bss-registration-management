@@ -852,12 +852,21 @@ function rm_form_empty_responses(array $schema): array
 
 /**
  * @param array{fields: list<array<string, mixed>>} $schema
+ * @param string $prefix
+ * @param string $coverage local|international
  * @return array<string, string>
  */
-function rm_form_responses_from_post(array $schema, string $prefix = ''): array
+function rm_form_responses_from_post(array $schema, string $prefix = '', string $coverage = RM_EVENT_COVERAGE_LOCAL): array
 {
     $responses = rm_form_empty_responses($schema);
     $prefix = $prefix !== '' ? $prefix : '';
+    $coverage = in_array($coverage, rm_event_coverage_options(), true)
+        ? $coverage
+        : RM_EVENT_COVERAGE_LOCAL;
+    $allowed_dials = array_values(array_unique(array_map(
+        static fn (array $country): string => (string) $country['dial'],
+        rm_phone_country_codes()
+    )));
 
     foreach ($schema['fields'] as $field) {
         $key = (string) ($field['key'] ?? '');
@@ -878,6 +887,34 @@ function rm_form_responses_from_post(array $schema, string $prefix = ''): array
             $responses[$key] = is_array($raw)
                 ? array_map(static fn ($v): string => sanitize_text_field(wp_unslash((string) $v)), $raw)
                 : [];
+            continue;
+        }
+
+        if ($type === 'phone') {
+            $dial_key = $post_key . '_dial';
+            $local_key = $post_key . '_local';
+
+            if (isset($_POST[$local_key]) || isset($_POST[$dial_key])) {
+                if ($coverage === RM_EVENT_COVERAGE_LOCAL) {
+                    $dial = '+65';
+                } else {
+                    $dial = isset($_POST[$dial_key])
+                        ? sanitize_text_field(wp_unslash((string) $_POST[$dial_key]))
+                        : '+65';
+                    if (!in_array($dial, $allowed_dials, true)) {
+                        $dial = '+65';
+                    }
+                }
+                $local = isset($_POST[$local_key])
+                    ? sanitize_text_field(wp_unslash((string) $_POST[$local_key]))
+                    : '';
+                $responses[$key] = rm_compose_phone_number($dial, $local);
+                continue;
+            }
+
+            if (isset($_POST[$post_key])) {
+                $responses[$key] = sanitize_text_field(wp_unslash((string) $_POST[$post_key]));
+            }
             continue;
         }
 

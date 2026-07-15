@@ -5,6 +5,7 @@ $registration_config = is_array($registration_config ?? null) ? $registration_co
 $config_present = is_array($registration_config_present ?? null) ? $registration_config_present : [];
 
 $mode_value = (string) ($registration_config['mode'] ?? 'individual');
+$coverage_value = (string) ($registration_config['coverage'] ?? RM_EVENT_COVERAGE_LOCAL);
 $preset_value = (string) ($registration_config['form']['preset'] ?? 'full');
 $group_min = (int) ($registration_config['group']['min'] ?? 1);
 $group_max = (int) ($registration_config['group']['max'] ?? 1);
@@ -104,12 +105,20 @@ document.addEventListener('alpine:init', () => {
                     <legend class="text-sm font-medium text-teal-700 px-1">Main Event Settings</legend>
                     <div class="grid grid-cols-2 gap-3">
                         <div>
-                            <label class="block text-xs font-medium text-slate-600 mb-1" for="rm_mode">Mode</label>
+                            <label class="block text-xs font-medium text-slate-600 mb-1" for="rm_mode">RegistrationMode</label>
                             <select id="rm_mode" name="mode" x-model="mode" class="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none">
                                 <option value="individual">Individual</option>
                                 <option value="group_flat">Group (flat package)</option>
                                 <option value="group_per_head">Group (per-head tiers)</option>
                             </select>
+                        </div>
+                        <div>
+                            <label class="block text-xs font-medium text-slate-600 mb-1" for="rm_coverage">Event Coverage</label>
+                            <select id="rm_coverage" name="coverage" class="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none">
+                                <option value="local" <?php selected($coverage_value, RM_EVENT_COVERAGE_LOCAL); ?>>Local Event (Singapore Only)</option>
+                                <option value="international" <?php selected($coverage_value, RM_EVENT_COVERAGE_INTERNATIONAL); ?>>International</option>
+                            </select>
+                            <!-- <p class="mt-1 text-[11px] text-slate-500">Controls the contact number country-code prepend on the public form.</p> -->
                         </div>
                         <div>
                             <label class="block text-xs font-medium text-slate-600 mb-1" for="rm_pricing_model">Pricing model</label>

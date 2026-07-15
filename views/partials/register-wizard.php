@@ -8,6 +8,8 @@ $guests_input = is_array($guests_input ?? null) ? $guests_input : [];
 $active_promotion = is_array($active_promotion ?? null) ? $active_promotion : null;
 $guest_schema = is_array($guest_schema ?? null) ? $guest_schema : ['fields' => [], 'enabled' => false, 'label_singular' => 'Guest', 'label_plural' => 'Guests', 'min' => 0, 'max' => 0, 'price' => 0];
 $event_currency = (string) ($event_currency ?? 'SGD');
+$event_coverage = rm_registration_coverage($registration_config);
+$phone_country_codes = rm_phone_country_codes();
 $mode = (string) ($registration_config['mode'] ?? 'group_flat');
 $require_all_members = !empty($group_limits['require_all_members']);
 $schema_json = wp_json_encode($form_schema);
@@ -20,12 +22,17 @@ $limits_json = wp_json_encode([
 $members_json = wp_json_encode($members_input !== [] ? $members_input : []);
 $guests_json = wp_json_encode($guests_input !== [] ? $guests_input : []);
 $pricing_json = wp_json_encode($pricing_preview);
+$coverage_json = wp_json_encode($event_coverage);
+$phone_codes_json = wp_json_encode($phone_country_codes);
 $input_class = 'w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none';
+$phone_local_class = 'w-full rounded-r-lg rounded-l-none border border-slate-300 bg-white px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none';
+$phone_dial_class = 'min-w-[6rem] rounded-l-lg rounded-r-none border border-r-0 border-slate-300 bg-slate-50 px-2 py-2 text-sm text-slate-700 focus:border-indigo-500 focus:outline-none';
+$phone_fixed_class = 'inline-flex items-center rounded-l-lg border border-r-0 border-slate-300 bg-slate-50 px-3 text-sm text-slate-600';
 ?>
 
 <div
     x-data="rmRegisterWizard()"
-    x-init="init(<?php echo esc_attr($schema_json); ?>, <?php echo esc_attr($limits_json); ?>, <?php echo esc_attr($members_json); ?>, <?php echo esc_attr($pricing_json); ?>, <?php echo esc_attr($guest_schema_json); ?>, <?php echo esc_attr($guests_json); ?>, <?php echo esc_attr(wp_json_encode($event_currency)); ?>)"
+    x-init="init(<?php echo esc_attr($schema_json); ?>, <?php echo esc_attr($limits_json); ?>, <?php echo esc_attr($members_json); ?>, <?php echo esc_attr($pricing_json); ?>, <?php echo esc_attr($guest_schema_json); ?>, <?php echo esc_attr($guests_json); ?>, <?php echo esc_attr(wp_json_encode($event_currency)); ?>, <?php echo esc_attr($coverage_json); ?>, <?php echo esc_attr($phone_codes_json); ?>)"
     class="space-y-6"
 >
     <div class="flex flex-wrap items-center gap-2 text-sm text-slate-600">
@@ -68,7 +75,28 @@ $input_class = 'w-full rounded-lg border border-slate-300 bg-white px-3 py-2 tex
                                     </template>
                                 </select>
                             </template>
-                            <template x-if="!['textarea','select','checkbox','checkbox_group','radio'].includes(field.type)">
+                                    <template x-if="field.type === 'phone'">
+                                <div class="flex">
+                                    <template x-if="coverage === 'international'">
+                                        <select class="<?php echo esc_attr($phone_dial_class); ?>" x-model="members[0][field.key + '__dial']" @change="syncPhone(members[0], field.key)">
+                                            <template x-for="cc in phoneCountryCodes" :key="cc.code + cc.dial">
+                                                <option :value="cc.dial" x-text="cc.dial + ' ' + cc.code"></option>
+                                            </template>
+                                        </select>
+                                    </template>
+                                    <template x-if="coverage !== 'international'">
+                                        <span class="<?php echo esc_attr($phone_fixed_class); ?>">+65</span>
+                                    </template>
+                                    <input
+                                        class="<?php echo esc_attr($phone_local_class); ?>"
+                                        type="tel"
+                                        inputmode="numeric"
+                                        x-model="members[0][field.key + '__local']"
+                                        @input="syncPhone(members[0], field.key)"
+                                    />
+                                </div>
+                            </template>
+                            <template x-if="!['textarea','select','checkbox','checkbox_group','radio','phone'].includes(field.type)">
                                 <input
                                     class="<?php echo esc_attr($input_class); ?>"
                                     :type="inputType(field.type)"
@@ -111,7 +139,28 @@ $input_class = 'w-full rounded-lg border border-slate-300 bg-white px-3 py-2 tex
                                             </template>
                                         </select>
                                     </template>
-                                    <template x-if="!['textarea','select','checkbox','checkbox_group','radio'].includes(field.type)">
+                                    <template x-if="field.type === 'phone'">
+                                        <div class="flex">
+                                            <template x-if="coverage === 'international'">
+                                                <select class="<?php echo esc_attr($phone_dial_class); ?>" x-model="members[mIndex][field.key + '__dial']" @change="syncPhone(members[mIndex], field.key)">
+                                                    <template x-for="cc in phoneCountryCodes" :key="cc.code + cc.dial">
+                                                        <option :value="cc.dial" x-text="cc.dial + ' ' + cc.code"></option>
+                                                    </template>
+                                                </select>
+                                            </template>
+                                            <template x-if="coverage !== 'international'">
+                                                <span class="<?php echo esc_attr($phone_fixed_class); ?>">+65</span>
+                                            </template>
+                                            <input
+                                                class="<?php echo esc_attr($phone_local_class); ?>"
+                                                type="tel"
+                                                inputmode="numeric"
+                                                x-model="members[mIndex][field.key + '__local']"
+                                                @input="syncPhone(members[mIndex], field.key)"
+                                            />
+                                        </div>
+                                    </template>
+                                    <template x-if="!['textarea','select','checkbox','checkbox_group','radio','phone'].includes(field.type)">
                                         <input class="<?php echo esc_attr($input_class); ?>" :type="inputType(field.type)" x-model="members[mIndex][field.key]" />
                                     </template>
                                 </div>
@@ -166,7 +215,28 @@ $input_class = 'w-full rounded-lg border border-slate-300 bg-white px-3 py-2 tex
                                                 </template>
                                             </select>
                                         </template>
-                                        <template x-if="!['textarea','select','checkbox','checkbox_group','radio'].includes(field.type)">
+                                        <template x-if="field.type === 'phone'">
+                                            <div class="flex">
+                                                <template x-if="coverage === 'international'">
+                                                    <select class="<?php echo esc_attr($phone_dial_class); ?>" x-model="guests[gIdx][field.key + '__dial']" @change="syncPhone(guests[gIdx], field.key)">
+                                                        <template x-for="cc in phoneCountryCodes" :key="cc.code + cc.dial">
+                                                            <option :value="cc.dial" x-text="cc.dial + ' ' + cc.code"></option>
+                                                        </template>
+                                                    </select>
+                                                </template>
+                                                <template x-if="coverage !== 'international'">
+                                                    <span class="<?php echo esc_attr($phone_fixed_class); ?>">+65</span>
+                                                </template>
+                                                <input
+                                                    class="<?php echo esc_attr($phone_local_class); ?>"
+                                                    type="tel"
+                                                    inputmode="numeric"
+                                                    x-model="guests[gIdx][field.key + '__local']"
+                                                    @input="syncPhone(guests[gIdx], field.key)"
+                                                />
+                                            </div>
+                                        </template>
+                                        <template x-if="!['textarea','select','checkbox','checkbox_group','radio','phone'].includes(field.type)">
                                             <input class="<?php echo esc_attr($input_class); ?>" :type="inputType(field.type)" x-model="guests[gIdx][field.key]" />
                                         </template>
                                     </div>
@@ -260,7 +330,12 @@ function rmRegisterWizard() {
         serializedGuests: '[]',
         pricing: {},
         currency: 'SGD',
-        init(schema, limits, members, pricing, guestSchema, guestsInput, currency) {
+        coverage: 'local',
+        phoneCountryCodes: [],
+        get defaultDial() {
+            return '+65';
+        },
+        init(schema, limits, members, pricing, guestSchema, guestsInput, currency, coverage, phoneCountryCodes) {
             this.schema = schema || { fields: [] };
             this.guestSchema = Object.assign(
                 { fields: [], enabled: false, label_singular: 'Guest', label_plural: 'Guests', min: 0, max: 0, price: 0 },
@@ -269,30 +344,112 @@ function rmRegisterWizard() {
             this.limits = Object.assign({ min: 1, max: 1, require_all_members: false }, limits || {});
             this.pricing = pricing || {};
             this.currency = currency || 'SGD';
-            this.members = Array.isArray(members) && members.length ? members : [this.emptyMember()];
+            this.coverage = coverage || 'local';
+            this.phoneCountryCodes = Array.isArray(phoneCountryCodes) ? phoneCountryCodes : [];
+            this.members = Array.isArray(members) && members.length
+                ? members.map((m) => this.hydratePhoneFields(m, this.schema.fields))
+                : [this.emptyMember()];
             const target = this.limits.require_all_members ? this.limits.max : this.limits.min;
             while (this.members.length < target) this.addMember();
             if (this.limits.require_all_members && this.members.length > this.limits.max) {
                 this.members = this.members.slice(0, this.limits.max);
             }
             if (this.guestSchema.enabled) {
-                this.guests = Array.isArray(guestsInput) && guestsInput.length ? guestsInput : [];
+                this.guests = Array.isArray(guestsInput) && guestsInput.length
+                    ? guestsInput.map((g) => this.hydratePhoneFields(g, this.guestSchema.fields))
+                    : [];
                 while (this.guests.length < this.guestSchema.min) this.addGuest();
             }
         },
         emptyMember() {
             const member = {};
             (this.schema.fields || []).forEach((field) => {
-                member[field.key] = field.type === 'checkbox' ? false : (field.type === 'checkbox_group' ? [] : '');
+                if (field.type === 'phone') {
+                    member[field.key] = '';
+                    member[field.key + '__dial'] = this.defaultDial;
+                    member[field.key + '__local'] = '';
+                } else {
+                    member[field.key] = field.type === 'checkbox' ? false : (field.type === 'checkbox_group' ? [] : '');
+                }
             });
             return member;
         },
         emptyGuest() {
             const guest = {};
             (this.guestSchema.fields || []).forEach((field) => {
-                guest[field.key] = field.type === 'checkbox' ? false : (field.type === 'checkbox_group' ? [] : '');
+                if (field.type === 'phone') {
+                    guest[field.key] = '';
+                    guest[field.key + '__dial'] = this.defaultDial;
+                    guest[field.key + '__local'] = '';
+                } else {
+                    guest[field.key] = field.type === 'checkbox' ? false : (field.type === 'checkbox_group' ? [] : '');
+                }
             });
             return guest;
+        },
+        hydratePhoneFields(row, fields) {
+            const data = Object.assign({}, row || {});
+            (fields || []).forEach((field) => {
+                if (field.type !== 'phone') return;
+                const parts = this.splitPhone(data[field.key] || '');
+                data[field.key + '__dial'] = parts.dial;
+                data[field.key + '__local'] = parts.local;
+                this.syncPhone(data, field.key);
+            });
+            return data;
+        },
+        splitPhone(full) {
+            const value = String(full || '').trim();
+            if (this.coverage !== 'international') {
+                let digits = value.replace(/\D+/g, '');
+                if (digits.startsWith('65') && digits.length > 8) {
+                    digits = digits.slice(2);
+                }
+                return { dial: this.defaultDial, local: digits };
+            }
+            if (!value) {
+                return { dial: this.defaultDial, local: '' };
+            }
+            const normalized = value.startsWith('+') ? value : '+' + value.replace(/^\+/, '');
+            const codes = [...this.phoneCountryCodes].sort((a, b) => String(b.dial).length - String(a.dial).length);
+            for (const cc of codes) {
+                if (normalized.startsWith(cc.dial)) {
+                    return {
+                        dial: cc.dial,
+                        local: normalized.slice(cc.dial.length).replace(/\D+/g, ''),
+                    };
+                }
+            }
+            return { dial: this.defaultDial, local: value.replace(/\D+/g, '') };
+        },
+        composePhone(dial, local) {
+            let code = String(dial || this.defaultDial).trim() || this.defaultDial;
+            if (!code.startsWith('+')) code = '+' + code.replace(/^\+/, '');
+            let digits = String(local || '').replace(/\D+/g, '').replace(/^0+/, '');
+            const dialDigits = code.replace(/^\+/, '');
+            if (digits.startsWith(dialDigits)) {
+                digits = digits.slice(dialDigits.length);
+            }
+            return digits ? code + digits : '';
+        },
+        syncPhone(row, key) {
+            if (!row) return;
+            if (this.coverage !== 'international') {
+                row[key + '__dial'] = this.defaultDial;
+            }
+            row[key] = this.composePhone(row[key + '__dial'] || this.defaultDial, row[key + '__local'] || '');
+        },
+        serializeRow(row, fields) {
+            const out = {};
+            (fields || []).forEach((field) => {
+                if (field.type === 'phone') {
+                    this.syncPhone(row, field.key);
+                    out[field.key] = row[field.key] || '';
+                } else {
+                    out[field.key] = row[field.key];
+                }
+            });
+            return out;
         },
         wideField(field) {
             return ['textarea', 'radio', 'checkbox_group'].includes(field.type);
@@ -320,6 +477,9 @@ function rmRegisterWizard() {
         validateFields(fields, data) {
             for (const field of (fields || [])) {
                 if (!field.required) continue;
+                if (field.type === 'phone') {
+                    this.syncPhone(data, field.key);
+                }
                 const val = data[field.key];
                 if (field.type === 'checkbox' && !val) return false;
                 if (field.type === 'checkbox_group' && (!Array.isArray(val) || !val.length)) return false;
@@ -401,8 +561,12 @@ function rmRegisterWizard() {
             return this.formatCurrency(total);
         },
         prepareSubmit() {
-            this.serializedMembers = JSON.stringify(this.members);
-            this.serializedGuests = this.guestSchema.enabled ? JSON.stringify(this.guests) : '[]';
+            this.serializedMembers = JSON.stringify(
+                this.members.map((m) => this.serializeRow(m, this.schema.fields))
+            );
+            this.serializedGuests = this.guestSchema.enabled
+                ? JSON.stringify(this.guests.map((g) => this.serializeRow(g, this.guestSchema.fields)))
+                : '[]';
         }
     };
 }

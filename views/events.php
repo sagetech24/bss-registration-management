@@ -106,18 +106,6 @@
                 </div>
             </div>
         </div>
-        <!-- <aside class="lg:col-span-3">
-            <div class="bg-white border border-slate-200 rounded-xl shadow-sm p-5">
-                <h3 class="text-lg font-semibold">Quick Tips</h3>
-                <ul class="mt-3 space-y-2 text-sm text-slate-600">
-                    <li>Use Event Option to show New Version, Legacy, or both.</li>
-                    <li>Use the date and year filters to narrow the event list.</li>
-                    <li>Use search to match title, program code, venue, and description.</li>
-                    <li>Open <span class="font-medium text-slate-800">Dashboard</span> for settings, packages, and summary stats.</li>
-                    <li>Use <span class="font-medium text-slate-800">Registrants</span> for the full attendee table.</li>
-                </ul>
-            </div>
-        </aside> -->
     </div>
     <div class="lg:col-span-12">
         <div class="mt-6">
@@ -240,12 +228,6 @@
                     No events found for this filter.
                 </div>
             <?php elseif ($has_legacy_events) : ?>
-                <?php //if ($has_cpt_events) : ?>
-                    <!-- <div class="flex items-baseline justify-between gap-3 mb-4">
-                        <h3 class="text-2xl font-semibold text-slate-900">Legacy Events</h3>
-                        <p class="text-sm text-slate-500">From bss_events</p>
-                    </div> -->
-                <?php// endif; ?>
                 <?php foreach ($events as $year => $events_list) : ?>
                     <?php if (!is_array($events_list) || count($events_list) === 0) continue; ?>
 

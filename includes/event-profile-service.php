@@ -220,6 +220,7 @@ function rm_handle_save_registration_settings_post(int $event_id, string $source
     $normalized = rm_normalize_registration_settings_input(
         [
             'mode'                    => $_POST['mode'] ?? null,
+            'coverage'                => $_POST['coverage'] ?? null,
             'form_preset'             => $_POST['form_preset'] ?? null,
             'form_fields'             => $_POST['form_fields'] ?? null,
             'custom_fields'           => $_POST['custom_fields'] ?? null,
