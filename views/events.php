@@ -1,20 +1,47 @@
 <section class="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
     <div class="lg:col-span-12 grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-        <div class="lg:col-span-9">
+        <div class="lg:col-span-full">
             <div class="bg-white border border-slate-200 rounded-xl shadow-sm">
                 <div class="p-5 border-b border-slate-200">
                     <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
                         <div>
                             <h2 class="text-lg font-semibold">Events</h2>
-                            <p class="text-sm text-slate-500 mt-1">Filter by date, year, and search by title / code / venue.</p>
+                            <p class="text-sm text-slate-500 mt-1">Filter by event option, date, year, and search by title / code / venue.</p>
                         </div>
                     </div>
                 </div>
     
                 <div class="p-5">
                     <form method="get" action="<?php echo esc_url($page_url); ?>" class="flex flex-col gap-4">
-                        <div class="flex flex-col sm:flex-row gap-3">
-                            <div class="flex-1">
+                        <div class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-12 gap-3">
+                            <div class="col-span-12 sm:col-span-6 xl:col-span-6">
+                                <label class="block text-sm font-medium text-slate-700 mb-2" for="event_search">Search</label>
+                                <input
+                                    id="event_search"
+                                    type="search"
+                                    name="event_search"
+                                    value="<?php echo esc_attr($event_search); ?>"
+                                    placeholder="Search events..."
+                                    class="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none"
+                                />
+                            </div>
+                            <div class="col-span-12 sm:col-span-6 xl:col-span-2">
+                                <label class="block text-sm font-medium text-slate-700 mb-2" for="event_option">Event Option</label>
+                                <select
+                                    id="event_option"
+                                    name="event_option"
+                                    class="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none"
+                                    onchange="this.form.submit()"
+                                >
+                                    <?php foreach ($event_option_options as $option_key => $option_label) : ?>
+                                        <option value="<?php echo esc_attr($option_key); ?>" <?php selected($event_option, $option_key); ?>>
+                                            <?php echo esc_html($option_label); ?>
+                                        </option>
+                                    <?php endforeach; ?>
+                                </select>
+                            </div>
+
+                            <div class="col-span-12 sm:col-span-6 xl:col-span-2">
                                 <label class="block text-sm font-medium text-slate-700 mb-2" for="event_filter">Date filter</label>
                                 <select
                                     id="event_filter"
@@ -31,7 +58,7 @@
                                 </select>
                             </div>
 
-                            <div class="flex-1">
+                            <div class="col-span-12 sm:col-span-6 xl:col-span-2">
                                 <label class="block text-sm font-medium text-slate-700 mb-2" for="event_year">Year</label>
                                 <select
                                     id="event_year"
@@ -46,18 +73,6 @@
                                         </option>
                                     <?php endforeach; ?>
                                 </select>
-                            </div>
-    
-                            <div class="flex-1">
-                                <label class="block text-sm font-medium text-slate-700 mb-2" for="event_search">Search</label>
-                                <input
-                                    id="event_search"
-                                    type="search"
-                                    name="event_search"
-                                    value="<?php echo esc_attr($event_search); ?>"
-                                    placeholder="Search events..."
-                                    class="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none"
-                                />
                             </div>
                         </div>
     
@@ -91,18 +106,18 @@
                 </div>
             </div>
         </div>
-        <aside class="lg:col-span-3">
+        <!-- <aside class="lg:col-span-3">
             <div class="bg-white border border-slate-200 rounded-xl shadow-sm p-5">
                 <h3 class="text-lg font-semibold">Quick Tips</h3>
                 <ul class="mt-3 space-y-2 text-sm text-slate-600">
-                    <li>New Events (WordPress EVENT posts) appear above legacy bss_events cards.</li>
+                    <li>Use Event Option to show New Version, Legacy, or both.</li>
                     <li>Use the date and year filters to narrow the event list.</li>
                     <li>Use search to match title, program code, venue, and description.</li>
                     <li>Open <span class="font-medium text-slate-800">Dashboard</span> for settings, packages, and summary stats.</li>
                     <li>Use <span class="font-medium text-slate-800">Registrants</span> for the full attendee table.</li>
                 </ul>
             </div>
-        </aside>
+        </aside> -->
     </div>
     <div class="lg:col-span-12">
         <div class="mt-6">
@@ -122,7 +137,6 @@
                 <div class="mb-10">
                     <div class="flex items-baseline justify-between gap-3 mb-4">
                         <h3 class="text-2xl font-semibold text-slate-900">New Events</h3>
-                        <p class="text-sm text-slate-500">WordPress EVENT posts</p>
                     </div>
                     <?php foreach ($cpt_events as $year => $events_list) : ?>
                         <?php if (!is_array($events_list) || count($events_list) === 0) {
@@ -226,12 +240,12 @@
                     No events found for this filter.
                 </div>
             <?php elseif ($has_legacy_events) : ?>
-                <?php if ($has_cpt_events) : ?>
-                    <div class="flex items-baseline justify-between gap-3 mb-4">
+                <?php //if ($has_cpt_events) : ?>
+                    <!-- <div class="flex items-baseline justify-between gap-3 mb-4">
                         <h3 class="text-2xl font-semibold text-slate-900">Legacy Events</h3>
                         <p class="text-sm text-slate-500">From bss_events</p>
-                    </div>
-                <?php endif; ?>
+                    </div> -->
+                <?php// endif; ?>
                 <?php foreach ($events as $year => $events_list) : ?>
                     <?php if (!is_array($events_list) || count($events_list) === 0) continue; ?>
 

@@ -15,6 +15,32 @@ function rm_event_filter_options(): array
 }
 
 /**
+ * @return array<string, string>
+ */
+function rm_event_option_options(): array
+{
+    return [
+        'new'    => 'New Version Events',
+        'legacy' => 'Legacy Events',
+        'both'   => 'Both New Version & Legacy',
+    ];
+}
+
+function rm_get_event_option(): string
+{
+    $options = rm_event_option_options();
+    $default = 'new';
+
+    if (!isset($_GET['event_option'])) {
+        return $default;
+    }
+
+    $option = sanitize_key(wp_unslash((string) $_GET['event_option']));
+
+    return array_key_exists($option, $options) ? $option : $default;
+}
+
+/**
  * @param array<string, array<int, array<string, mixed>>> $events_by_year
  * @return list<string>
  */
@@ -82,9 +108,9 @@ function rm_get_event_filter(string $event_year = ''): string
     return array_key_exists($filter, $options) ? $filter : '';
 }
 
-function rm_has_active_event_filters(string $filter, string $year, string $search): bool
+function rm_has_active_event_filters(string $filter, string $year, string $search, string $event_option = 'new'): bool
 {
-    return $filter !== '' || $year !== '' || $search !== '';
+    return $filter !== '' || $year !== '' || $search !== '' || $event_option !== 'new';
 }
 
 function rm_get_event_search(): string

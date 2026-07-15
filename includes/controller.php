@@ -279,6 +279,7 @@ function rm_build_dashboard_context(): array
     }
 
     $event_search = rm_get_event_search();
+    $event_option = rm_get_event_option();
     $page_url = rm_page_url();
 
     $fetch = rm_fetch_registration_events();
@@ -289,15 +290,23 @@ function rm_build_dashboard_context(): array
     $events = rm_filter_events($fetch['events'], $event_filter, $event_search, $event_year);
     $cpt_events = rm_filter_events($cpt_fetch['events'], $event_filter, $event_search, $event_year);
 
+    if ($event_option === 'new') {
+        $events = [];
+    } elseif ($event_option === 'legacy') {
+        $cpt_events = [];
+    }
+
     $context = [
         'event_count'              => rm_count_filtered_events($events) + rm_count_filtered_events($cpt_events),
-        'has_active_event_filters' => rm_has_active_event_filters($event_filter, $event_year, $event_search),
+        'has_active_event_filters' => rm_has_active_event_filters($event_filter, $event_year, $event_search, $event_option),
         'welcome_name'         => rm_get_welcome_name(),
         'view_action'          => $view_action,
         'active_nav'           => rm_active_nav($view_action),
         'page_url'             => $page_url,
         'event_filter'         => $event_filter,
         'event_filter_options' => rm_event_filter_options(),
+        'event_option'         => $event_option,
+        'event_option_options' => rm_event_option_options(),
         'event_year'           => $event_year,
         'event_years'          => $event_years,
         'event_search'         => $event_search,
