@@ -82,7 +82,12 @@ $responses = $members_input[0] ?? rm_form_empty_responses($form_schema);
                             </div>
                         <?php endif; ?>
 
-                        <?php if ($uses_v2 && $is_group_mode) : ?>
+                        <?php
+                        $guest_schema = is_array($guest_schema ?? null) ? $guest_schema : ['fields' => [], 'enabled' => false];
+                        $guests_input = is_array($guests_input ?? null) ? $guests_input : [];
+                        $has_guests = !empty($guest_schema['enabled']);
+                        ?>
+                        <?php if ($uses_v2 && ($is_group_mode || $has_guests)) : ?>
                             <?php include __DIR__ . '/partials/register-wizard.php'; ?>
                         <?php else : ?>
                             <form method="post" action="<?php echo esc_url($page_url); ?>" class="space-y-5">

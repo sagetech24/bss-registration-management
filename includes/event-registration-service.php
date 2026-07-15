@@ -20,7 +20,8 @@ function rm_v2_submit_registration(
     array $member_rows,
     array $pricing,
     array $form_schema,
-    ?array $promotion = null
+    ?array $promotion = null,
+    array $guest_rows = []
 ): array {
     $event_id = isset($event['id']) ? absint($event['id']) : 0;
     $source = rm_event_source_value($event);
@@ -47,6 +48,23 @@ function rm_v2_submit_registration(
         );
     }
 
+    $guest_count = count($guest_rows);
+    $guests_config = $config['guests'] ?? [];
+    if (!empty($guests_config['enabled'])) {
+        $guest_min = (int) ($guests_config['min'] ?? 0);
+        $guest_max = (int) ($guests_config['max'] ?? 0);
+        if ($guest_count < $guest_min) {
+            $label = (string) ($guests_config['label_plural'] ?? 'guest(s)');
+            return rm_v2_submit_error('At least ' . $guest_min . ' ' . strtolower($label) . ' required.');
+        }
+        if ($guest_max > 0 && $guest_count > $guest_max) {
+            $label = (string) ($guests_config['label_plural'] ?? 'guest(s)');
+            return rm_v2_submit_error('No more than ' . $guest_max . ' ' . strtolower($label) . ' allowed.');
+        }
+    } elseif ($guest_count > 0) {
+        return rm_v2_submit_error('Guest registration is not enabled for this event.');
+    }
+
     $confirmation_number = rm_generate_confirmation_number();
     $primary_email = '';
     if (isset($member_rows[0]['core']['email'])) {
@@ -60,6 +78,14 @@ function rm_v2_submit_registration(
         $event_promotion_id = (int) $pricing['event_promotion_id'];
     }
 
+    $schema_snapshot = [
+        'registrant' => $form_schema['fields'] ?? [],
+    ];
+    if ($guest_rows !== []) {
+        $guest_schema = rm_parse_guest_form_schema($event);
+        $schema_snapshot['guest'] = $guest_schema['fields'] ?? [];
+    }
+
     $header = [
         'event_id'                   => $event_id,
         'registration_mode'          => $config['mode'],
@@ -69,7 +95,7 @@ function rm_v2_submit_registration(
         'discount_total'             => $pricing['discount_total'],
         'total_amount'               => $pricing['total_amount'],
         'pricing_snapshot'           => wp_json_encode($pricing['pricing_snapshot']),
-        'form_schema_snapshot'       => wp_json_encode($form_schema['fields']),
+        'form_schema_snapshot'       => wp_json_encode($schema_snapshot),
         'promo_id'                   => $pricing['promo_id'],
         'event_promotion_id'         => $event_promotion_id,
         'payment_status'             => $pricing['total_amount'] > 0 ? 'pending' : 'free',
@@ -83,10 +109,10 @@ function rm_v2_submit_registration(
     ];
 
     if ($pricing['total_amount'] <= 0) {
-        return rm_v2_insert_confirmed_registration($header, $member_rows, $pricing, $event_id, $source);
+        return rm_v2_insert_confirmed_registration($header, $member_rows, $pricing, $event_id, $source, $guest_rows);
     }
 
-    return rm_v2_insert_pending_registration($header, $member_rows, $pricing, $event_id);
+    return rm_v2_insert_pending_registration($header, $member_rows, $pricing, $event_id, $guest_rows);
 }
 
 /**
@@ -112,7 +138,8 @@ function rm_v2_insert_pending_registration(
     array $header,
     array $member_rows,
     array $pricing,
-    int $event_id
+    int $event_id,
+    array $guest_rows = []
 ): array {
     global $wpdb;
 
@@ -141,6 +168,24 @@ function rm_v2_insert_pending_registration(
         return rm_v2_submit_error($line_result['error']);
     }
 
+    if ($guest_rows !== []) {
+        $guest_line_result = rm_v2_insert_guest_lines(
+            'event_registrant_pendings',
+            $pending_id,
+            $event_id,
+            $guest_rows,
+            $pricing,
+            'pending',
+            count($member_rows)
+        );
+
+        if (!$guest_line_result['ok']) {
+            $wpdb->query('ROLLBACK');
+
+            return rm_v2_submit_error($guest_line_result['error']);
+        }
+    }
+
     $wpdb->query('COMMIT');
 
     return [
@@ -162,7 +207,8 @@ function rm_v2_insert_confirmed_registration(
     array $member_rows,
     array $pricing,
     int $event_id,
-    string $source = ''
+    string $source = '',
+    array $guest_rows = []
 ): array {
     global $wpdb;
 
@@ -214,6 +260,24 @@ function rm_v2_insert_confirmed_registration(
         $wpdb->query('ROLLBACK');
 
         return rm_v2_submit_error($line_result['error']);
+    }
+
+    if ($guest_rows !== []) {
+        $guest_line_result = rm_v2_insert_guest_lines(
+            'event_registrant',
+            $registration_id,
+            $event_id,
+            $guest_rows,
+            $pricing,
+            'confirmed',
+            count($member_rows)
+        );
+
+        if (!$guest_line_result['ok']) {
+            $wpdb->query('ROLLBACK');
+
+            return rm_v2_submit_error($guest_line_result['error']);
+        }
     }
 
     $wpdb->query('COMMIT');
@@ -477,6 +541,73 @@ function rm_v2_insert_registrant_lines(
             return [
                 'ok'    => false,
                 'error' => 'Registration could not be saved. Please try again.',
+            ];
+        }
+    }
+
+    return ['ok' => true, 'error' => ''];
+}
+
+/**
+ * Insert guest (addon) line items into a registrant table.
+ *
+ * Guest rows use `role = 'addon'` and are indexed after the member rows.
+ * Core-mapped fields (given_name, family_name, etc.) go into columns;
+ * everything else is stored in custom_responses.
+ *
+ * @param list<array{core: array<string, string|null>, custom: array<string, mixed>}> $guest_rows
+ * @return array{ok: bool, error: string}
+ */
+function rm_v2_insert_guest_lines(
+    string $table,
+    int $registration_id,
+    int $event_id,
+    array $guest_rows,
+    array $pricing,
+    string $status,
+    int $member_offset = 0
+): array {
+    global $wpdb;
+
+    $guest_price = (float) ($pricing['guest_price'] ?? 0);
+
+    foreach ($guest_rows as $gi => $guest_row) {
+        $core = $guest_row['core'] ?? [];
+        $custom = $guest_row['custom'] ?? [];
+
+        $custom_json = $custom !== [] ? wp_json_encode($custom) : null;
+
+        $row = [
+            'registration_id'  => $registration_id,
+            'event_id'         => $event_id,
+            'member_index'     => $member_offset + $gi,
+            'role'             => 'addon',
+            'order_number'     => '',
+            'nric'             => $core['nric'] ?? null,
+            'title'            => $core['title'] ?? null,
+            'christian_name'   => $core['christian_name'] ?? null,
+            'given_name'       => $core['given_name'] ?? null,
+            'family_name'      => $core['family_name'] ?? null,
+            'certificate_name' => $core['certificate_name'] ?? null,
+            'email'            => $core['email'] ?? null,
+            'contact'          => $core['contact'] ?? null,
+            'address1'         => $core['address1'] ?? null,
+            'address2'         => $core['address2'] ?? null,
+            'postcode'         => $core['postcode'] ?? null,
+            'church_name'      => $core['church_name'] ?? null,
+            'custom_responses' => $custom_json,
+            'unit_price'       => $guest_price,
+            'discount_percent' => 0.0,
+            'status'           => $status,
+            'created_at'       => current_time('mysql'),
+            'updated_at'       => current_time('mysql'),
+        ];
+
+        $inserted = $wpdb->insert($table, $row);
+        if (!$inserted) {
+            return [
+                'ok'    => false,
+                'error' => 'Guest registration could not be saved. Please try again.',
             ];
         }
     }

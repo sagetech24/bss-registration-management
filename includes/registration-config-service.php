@@ -168,6 +168,17 @@ function rm_registration_config_defaults(): array
             'currency'   => RM_CURRENCY_SGD,
             'slots'      => [],
         ],
+        'guests' => [
+            'enabled'        => false,
+            'label_singular' => 'Guest',
+            'label_plural'   => 'Guests',
+            'min'            => 0,
+            'max'            => 0,
+            'price'          => 0,
+            'form'           => [
+                'fields' => [],
+            ],
+        ],
     ];
 }
 
@@ -215,6 +226,28 @@ function rm_parse_registration_config(array $event): array
     $config['pricing']['currency'] = in_array($currency, rm_registration_currencies(), true)
         ? $currency
         : RM_CURRENCY_SGD;
+
+    if (!isset($config['guests']) || !is_array($config['guests'])) {
+        $config['guests'] = $defaults['guests'];
+    }
+    $config['guests']['enabled'] = !empty($config['guests']['enabled']);
+    $config['guests']['label_singular'] = trim((string) ($config['guests']['label_singular'] ?? 'Guest'));
+    $config['guests']['label_plural'] = trim((string) ($config['guests']['label_plural'] ?? 'Guests'));
+    if ($config['guests']['label_singular'] === '') {
+        $config['guests']['label_singular'] = 'Guest';
+    }
+    if ($config['guests']['label_plural'] === '') {
+        $config['guests']['label_plural'] = 'Guests';
+    }
+    $config['guests']['min'] = max(0, (int) ($config['guests']['min'] ?? 0));
+    $config['guests']['max'] = max($config['guests']['min'], (int) ($config['guests']['max'] ?? 0));
+    $config['guests']['price'] = max(0, (float) ($config['guests']['price'] ?? 0));
+    if (!isset($config['guests']['form']) || !is_array($config['guests']['form'])) {
+        $config['guests']['form'] = ['fields' => []];
+    }
+    if (!isset($config['guests']['form']['fields']) || !is_array($config['guests']['form']['fields'])) {
+        $config['guests']['form']['fields'] = [];
+    }
 
     return $config;
 }
@@ -279,6 +312,9 @@ function rm_present_registration_config(array $config): array
         ? count($config['form']['fields'])
         : 0;
 
+    $guests = isset($config['guests']) && is_array($config['guests']) ? $config['guests'] : [];
+    $guests_enabled = !empty($guests['enabled']);
+
     return [
         'mode'               => $mode,
         'mode_label'         => $mode_labels[$mode] ?? $mode,
@@ -291,6 +327,10 @@ function rm_present_registration_config(array $config): array
         'base_price'         => $base_price !== null && $base_price !== '' ? (float) $base_price : null,
         'base_price_display' => $base_price_display,
         'custom_field_count' => $custom_fields,
+        'guests_enabled'     => $guests_enabled,
+        'guest_label'        => $guests_enabled ? trim((string) ($guests['label_plural'] ?? 'Guests')) : '',
+        'guest_max'          => (int) ($guests['max'] ?? 0),
+        'guest_price'        => (float) ($guests['price'] ?? 0),
     ];
 }
 
@@ -441,6 +481,84 @@ function rm_normalize_registration_settings_input(array $input, array $existing_
         $form_fields = [];
     }
 
+    $existing_guests = isset($existing['guests']) && is_array($existing['guests'])
+        ? $existing['guests']
+        : rm_registration_config_defaults()['guests'];
+
+    $guests_enabled = isset($input['guests_enabled'])
+        ? !empty($input['guests_enabled'])
+        : !empty($existing_guests['enabled']);
+
+    $guest_label_singular = isset($input['guest_label_singular'])
+        ? sanitize_text_field((string) $input['guest_label_singular'])
+        : (string) ($existing_guests['label_singular'] ?? 'Guest');
+    $guest_label_plural = isset($input['guest_label_plural'])
+        ? sanitize_text_field((string) $input['guest_label_plural'])
+        : (string) ($existing_guests['label_plural'] ?? 'Guests');
+    if ($guest_label_singular === '') {
+        $guest_label_singular = 'Guest';
+    }
+    if ($guest_label_plural === '') {
+        $guest_label_plural = 'Guests';
+    }
+
+    $guest_min = isset($input['guest_min']) ? max(0, absint($input['guest_min'])) : (int) ($existing_guests['min'] ?? 0);
+    $guest_max = isset($input['guest_max']) ? max($guest_min, absint($input['guest_max'])) : max($guest_min, (int) ($existing_guests['max'] ?? 0));
+    $guest_price = null;
+    if (isset($input['guest_price']) && trim((string) $input['guest_price']) !== '') {
+        $guest_price = (float) $input['guest_price'];
+        if ($guest_price < 0) {
+            return [
+                'ok'           => false,
+                'error'        => 'Guest price cannot be negative.',
+                'registration' => [],
+            ];
+        }
+    } else {
+        $guest_price = (float) ($existing_guests['price'] ?? 0);
+    }
+
+    $existing_guest_fields = isset($existing_guests['form']['fields']) && is_array($existing_guests['form']['fields'])
+        ? $existing_guests['form']['fields']
+        : [];
+
+    if (!empty($input['guest_fields_submitted'])) {
+        $guest_form_fields = rm_form_normalize_admin_custom_fields_input($input['guest_fields'] ?? []);
+    } else {
+        $guest_custom_rows = [];
+        foreach ($existing_guest_fields as $ef) {
+            if (!is_array($ef) || empty($ef['key'])) {
+                continue;
+            }
+            $options_text = '';
+            if (!empty($ef['options']) && is_array($ef['options'])) {
+                $labels = [];
+                foreach ($ef['options'] as $option) {
+                    if (is_array($option)) {
+                        $labels[] = (string) ($option['label'] ?? $option['value'] ?? '');
+                    } else {
+                        $labels[] = (string) $option;
+                    }
+                }
+                $options_text = implode("\n", array_values(array_filter($labels)));
+            }
+            $guest_custom_rows[] = [
+                'key'         => sanitize_key((string) $ef['key']),
+                'label'       => $ef['label'] ?? $ef['key'],
+                'type'        => $ef['type'] ?? 'text',
+                'required'    => !empty($ef['required']) ? '1' : '',
+                'optionsText' => $options_text,
+                'placeholder' => $ef['placeholder'] ?? '',
+            ];
+        }
+        $guest_form_fields = rm_form_normalize_admin_custom_fields_input($guest_custom_rows);
+    }
+
+    if (!$guests_enabled) {
+        $guest_min = 0;
+        $guest_max = 0;
+    }
+
     $registration = $existing;
     $registration['version'] = RM_REGISTRATION_VERSION;
     $registration['mode'] = $mode;
@@ -453,6 +571,17 @@ function rm_normalize_registration_settings_input(array $input, array $existing_
     $registration['pricing']['currency'] = $currency;
     $registration['pricing']['base_price'] = $base_price;
     $registration['pricing']['slots'] = $existing_slots;
+    $registration['guests'] = [
+        'enabled'        => $guests_enabled,
+        'label_singular' => $guest_label_singular,
+        'label_plural'   => $guest_label_plural,
+        'min'            => $guest_min,
+        'max'            => $guest_max,
+        'price'          => $guest_price,
+        'form'           => [
+            'fields' => $guest_form_fields,
+        ],
+    ];
 
     return [
         'ok'           => true,

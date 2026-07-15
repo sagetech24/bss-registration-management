@@ -97,13 +97,35 @@ function rm_submit_v2_registration(array $event): array
         ];
     }
 
-    $pricing = rm_calculate_registration_pricing($event, $build['member_rows'], $promotion);
+    $guest_rows = [];
+    $guests_config = $config['guests'] ?? [];
+    if (!empty($guests_config['enabled'])) {
+        $guest_responses = rm_parse_guests_from_post();
+        if ($guest_responses !== []) {
+            $guest_schema = rm_parse_guest_form_schema($event);
+            $guest_build = rm_build_member_rows_from_responses($guest_schema, $guest_responses);
+            if (!$guest_build['ok']) {
+                return [
+                    'ok'           => false,
+                    'error'        => $guest_build['error'],
+                    'status'       => '',
+                    'pending_id'   => 0,
+                    'order_number' => '',
+                    'form_errors'  => $guest_build['form_errors'],
+                ];
+            }
+            $guest_rows = $guest_build['member_rows'];
+        }
+    }
+
+    $pricing = rm_calculate_registration_pricing($event, $build['member_rows'], $promotion, $guest_rows);
     $result = rm_v2_submit_registration(
         $event,
         $build['member_rows'],
         $pricing,
         $schema,
-        $promotion
+        $promotion,
+        $guest_rows
     );
 
     return [
@@ -171,7 +193,7 @@ function rm_normalize_v2_registrant_row(array $registrant, ?array $header = null
 /**
  * @return array{registrants: array<int, array<string, mixed>>, error: string}
  */
-function rm_fetch_v2_registrants_from_db(int $event_id): array
+function rm_fetch_v2_registrants_from_db(int $event_id, ?array $event = null): array
 {
     global $wpdb;
 
@@ -180,6 +202,14 @@ function rm_fetch_v2_registrants_from_db(int $event_id): array
             'registrants' => [],
             'error'       => 'Event id is required.',
         ];
+    }
+
+    $guest_label = 'Guest';
+    if (is_array($event)) {
+        $config = rm_parse_registration_config($event);
+        if (!empty($config['guests']['enabled'])) {
+            $guest_label = (string) ($config['guests']['label_singular'] ?? 'Guest');
+        }
     }
 
     $rows = $wpdb->get_results(
@@ -233,7 +263,11 @@ function rm_fetch_v2_registrants_from_db(int $event_id): array
             $row['pricing_snapshot']
         );
 
-        $normalized[] = rm_normalize_v2_registrant_row($row, $header);
+        $registrant = rm_normalize_v2_registrant_row($row, $header);
+        if ($registrant['_role'] === 'addon') {
+            $registrant['_guest_label'] = $guest_label;
+        }
+        $normalized[] = $registrant;
     }
 
     return [

@@ -219,16 +219,24 @@ function rm_handle_save_registration_settings_post(int $event_id, string $source
 
     $normalized = rm_normalize_registration_settings_input(
         [
-            'mode'          => $_POST['mode'] ?? null,
+            'mode'                    => $_POST['mode'] ?? null,
             'form_preset'             => $_POST['form_preset'] ?? null,
             'form_fields'             => $_POST['form_fields'] ?? null,
             'custom_fields'           => $_POST['custom_fields'] ?? null,
             'custom_fields_submitted' => $_POST['custom_fields_submitted'] ?? null,
             'group_min'               => $_POST['group_min'] ?? null,
-            'group_max'     => $_POST['group_max'] ?? null,
-            'pricing_model' => $_POST['pricing_model'] ?? null,
-            'currency'      => $_POST['currency'] ?? null,
-            'base_price'    => $_POST['base_price'] ?? null,
+            'group_max'               => $_POST['group_max'] ?? null,
+            'pricing_model'           => $_POST['pricing_model'] ?? null,
+            'currency'                => $_POST['currency'] ?? null,
+            'base_price'              => $_POST['base_price'] ?? null,
+            'guests_enabled'          => $_POST['guests_enabled'] ?? null,
+            'guest_label_singular'    => $_POST['guest_label_singular'] ?? null,
+            'guest_label_plural'      => $_POST['guest_label_plural'] ?? null,
+            'guest_min'               => $_POST['guest_min'] ?? null,
+            'guest_max'               => $_POST['guest_max'] ?? null,
+            'guest_price'             => $_POST['guest_price'] ?? null,
+            'guest_fields'            => $_POST['guest_fields'] ?? null,
+            'guest_fields_submitted'  => $_POST['guest_fields_submitted'] ?? null,
         ],
         $existing_registration
     );

@@ -377,14 +377,21 @@ document.addEventListener('alpine:init', () => {
                                         </div>
                                     </td>
                                     <td class="whitespace-nowrap px-4 py-3 text-xs">
-                                        <span
-                                            class="inline-flex max-w-[12rem] truncate rounded-full px-2.5 py-1 text-xs font-semibold"
-                                            :class="row.event_promotion_id
-                                                ? 'bg-indigo-100 text-indigo-800'
-                                                : 'bg-slate-100 text-slate-700'"
-                                            :title="row.package_label || 'Individual'"
-                                            x-text="row.package_label || 'Individual'"
-                                        ></span>
+                                        <div class="flex flex-wrap gap-1">
+                                            <span
+                                                class="inline-flex max-w-[12rem] truncate rounded-full px-2.5 py-1 text-xs font-semibold"
+                                                :class="row.event_promotion_id
+                                                    ? 'bg-indigo-100 text-indigo-800'
+                                                    : 'bg-slate-100 text-slate-700'"
+                                                :title="row.package_label || 'Individual'"
+                                                x-text="row.package_label || 'Individual'"
+                                            ></span>
+                                            <span
+                                                x-show="row.is_guest"
+                                                class="inline-flex rounded-full bg-amber-100 text-amber-800 px-2.5 py-1 text-xs font-semibold"
+                                                x-text="row.role_label || 'Guest'"
+                                            ></span>
+                                        </div>
                                     </td>
                                     <td x-show="!eventIsFree" class="px-4 py-3 text-xs text-slate-700">
                                         <div class="flex items-center gap-2">

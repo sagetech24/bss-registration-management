@@ -81,7 +81,7 @@ function rm_pricing_base_price(array $event): array
  *     pricing_snapshot: array<string, mixed>
  * }
  */
-function rm_calculate_registration_pricing(array $event, array $members, ?array $promotion = null): array
+function rm_calculate_registration_pricing(array $event, array $members, ?array $promotion = null, array $guests = []): array
 {
     $config = rm_effective_registration_config($event, $promotion);
     $mode = $config['mode'];
@@ -155,6 +155,21 @@ function rm_calculate_registration_pricing(array $event, array $members, ?array 
         ];
     }
 
+    $guest_count = count($guests);
+    $guest_price = (float) ($config['guests']['price'] ?? 0);
+    $guest_subtotal = round($guest_count * $guest_price, 2);
+    $priced_guests = [];
+    foreach ($guests as $gi => $guest) {
+        $priced_guests[] = [
+            'index'            => $gi,
+            'role'             => 'addon',
+            'unit_price'       => $guest_price,
+            'discount_percent' => 0.0,
+        ];
+    }
+    $subtotal += $guest_subtotal;
+    $total += $guest_subtotal;
+
     $event_promotion_id = $promotion !== null ? (int) ($promotion['id'] ?? 0) : null;
     if ($event_promotion_id !== null && $event_promotion_id < 1) {
         $event_promotion_id = null;
@@ -176,6 +191,10 @@ function rm_calculate_registration_pricing(array $event, array $members, ?array 
         'group'               => $config['group'],
         'slots'               => $config['pricing']['slots'] ?? [],
         'members'             => $priced_members,
+        'guest_count'         => $guest_count,
+        'guest_price'         => $guest_price,
+        'guest_subtotal'      => $guest_subtotal,
+        'guests'              => $priced_guests,
         'subtotal'            => round($subtotal, 2),
         'discount_total'      => round($discount_total, 2),
         'total_amount'        => round($total, 2),
@@ -190,6 +209,10 @@ function rm_calculate_registration_pricing(array $event, array $members, ?array 
         'event_promotion_id'  => $event_promotion_id,
         'base_price'          => $base_price,
         'members'             => $priced_members,
+        'guest_count'         => $guest_count,
+        'guest_price'         => $guest_price,
+        'guest_subtotal'      => $guest_subtotal,
+        'guests'              => $priced_guests,
         'pricing_snapshot'    => $pricing_snapshot,
     ];
 }

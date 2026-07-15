@@ -146,6 +146,13 @@ function rm_present_registrant_row(array $registrant, bool $is_pending = false):
         $charge_amount_display = $charge_fallback_currency . ' ' . number_format_i18n($charge_amount_raw, 2);
     }
 
+    $role = (string) ($registrant['_role'] ?? '');
+    $is_guest = $role === 'addon';
+    $role_label = '';
+    if ($is_guest) {
+        $role_label = (string) ($registrant['_guest_label'] ?? 'Guest');
+    }
+
     return [
         'registrant_id'      => isset($registrant['id']) ? (int) $registrant['id'] : 0,
         'full_name'          => $full_name,
@@ -168,6 +175,8 @@ function rm_present_registrant_row(array $registrant, bool $is_pending = false):
         'email_sent'         => $email_sent,
         'email_sent_label'   => $email_sent ? 'Yes' : 'No',
         'is_pending'         => $is_pending,
+        'is_guest'           => $is_guest,
+        'role_label'         => $role_label,
         'package_label'      => trim((string) ($registrant['_package_label'] ?? 'Individual')) !== ''
             ? (string) ($registrant['_package_label'] ?? 'Individual')
             : 'Individual',
@@ -409,7 +418,7 @@ function rm_fetch_registrants_from_db(int $event_id, ?array $event = null): arra
     }
 
     if (is_array($event) && rm_event_uses_v2_registration($event) && rm_event_registration_tables_exist()) {
-        return rm_fetch_v2_registrants_from_db($event_id);
+        return rm_fetch_v2_registrants_from_db($event_id, $event);
     }
 
     global $wpdb;

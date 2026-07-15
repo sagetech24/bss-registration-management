@@ -105,6 +105,7 @@ function rm_build_register_context(): array
         : null;
     $context['registration_config'] = rm_effective_registration_config($event, $promotion);
     $context['form_schema'] = rm_parse_form_schema($event);
+    $context['guest_schema'] = rm_parse_guest_form_schema($event);
     $context['is_group_mode'] = rm_effective_is_group_mode($event, $promotion);
     $context['group_limits'] = rm_effective_group_limits($event, $promotion);
     $context['pricing_preview'] = rm_present_registration_pricing(
@@ -112,6 +113,7 @@ function rm_build_register_context(): array
         rm_calculate_registration_pricing($event, [[]], $promotion)
     );
     $context['members_input'] = [];
+    $context['guests_input'] = [];
 
     if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
         $flash = rm_consume_registration_success_flash(rm_get_registration_flash_key());
@@ -142,6 +144,11 @@ function rm_build_register_context(): array
             $context['members_input'] = $members_post;
         } elseif (!$context['is_group_mode']) {
             $context['members_input'] = [rm_form_responses_from_post($context['form_schema'])];
+        }
+
+        $guests_post = rm_parse_guests_from_post();
+        if ($guests_post !== []) {
+            $context['guests_input'] = $guests_post;
         }
     } else {
         $form_errors = rm_validate_registration_input($form_input);

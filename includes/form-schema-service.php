@@ -378,6 +378,91 @@ function rm_parse_form_schema(array $event): array
 }
 
 /**
+ * Build the guest form schema from the event's guests.form.fields config.
+ *
+ * @param array<string, mixed> $event
+ * @return array{fields: list<array<string, mixed>>, enabled: bool, label_singular: string, label_plural: string, min: int, max: int, price: float}
+ */
+function rm_parse_guest_form_schema(array $event): array
+{
+    $config = rm_parse_registration_config($event);
+    $guests = $config['guests'];
+
+    if (empty($guests['enabled'])) {
+        return [
+            'fields'         => [],
+            'enabled'        => false,
+            'label_singular' => 'Guest',
+            'label_plural'   => 'Guests',
+            'min'            => 0,
+            'max'            => 0,
+            'price'          => 0.0,
+        ];
+    }
+
+    $stored_fields = is_array($guests['form']['fields'] ?? null) ? $guests['form']['fields'] : [];
+    $core_defs = rm_form_core_field_definitions();
+    $fields = rm_form_normalize_fields($stored_fields, $core_defs);
+
+    usort($fields, static function (array $a, array $b): int {
+        return ((int) ($a['order'] ?? 0)) <=> ((int) ($b['order'] ?? 0));
+    });
+
+    return [
+        'fields'         => $fields,
+        'enabled'        => true,
+        'label_singular' => (string) ($guests['label_singular'] ?? 'Guest'),
+        'label_plural'   => (string) ($guests['label_plural'] ?? 'Guests'),
+        'min'            => (int) ($guests['min'] ?? 0),
+        'max'            => (int) ($guests['max'] ?? 0),
+        'price'          => (float) ($guests['price'] ?? 0),
+    ];
+}
+
+/**
+ * Present guest custom fields for the admin settings editor.
+ *
+ * @param array<string, mixed> $config
+ * @return list<array{key: string, label: string, type: string, required: bool, optionsText: string}>
+ */
+function rm_form_present_admin_guest_fields(array $config): array
+{
+    $fields = isset($config['guests']['form']['fields']) && is_array($config['guests']['form']['fields'])
+        ? $config['guests']['form']['fields']
+        : [];
+
+    $presented = [];
+    foreach ($fields as $field) {
+        if (!is_array($field) || empty($field['key'])) {
+            continue;
+        }
+
+        $options_text = '';
+        if (!empty($field['options']) && is_array($field['options'])) {
+            $labels = [];
+            foreach ($field['options'] as $option) {
+                if (is_array($option)) {
+                    $labels[] = (string) ($option['label'] ?? $option['value'] ?? '');
+                } else {
+                    $labels[] = (string) $option;
+                }
+            }
+            $options_text = implode("\n", array_values(array_filter($labels, static fn (string $label): bool => $label !== '')));
+        }
+
+        $presented[] = [
+            'key'         => sanitize_key((string) $field['key']),
+            'label'       => sanitize_text_field((string) ($field['label'] ?? $field['key'])),
+            'type'        => sanitize_key((string) ($field['type'] ?? 'text')),
+            'required'    => !empty($field['required']),
+            'optionsText' => $options_text,
+        ];
+    }
+
+    return $presented;
+}
+
+/**
  * Ensure custom-preset forms always include required core fields.
  *
  * @param list<array<string, mixed>> $fields
@@ -836,4 +921,35 @@ function rm_parse_members_from_post(): array
     }
 
     return $members;
+}
+
+/**
+ * Parse guests JSON from POST (v2 registration with guest addons).
+ *
+ * @return list<array<string, mixed>>
+ */
+function rm_parse_guests_from_post(): array
+{
+    if (!isset($_POST['guests_json'])) {
+        return [];
+    }
+
+    $raw = wp_unslash((string) $_POST['guests_json']);
+    if ($raw === '') {
+        return [];
+    }
+
+    $decoded = json_decode($raw, true);
+    if (!is_array($decoded)) {
+        return [];
+    }
+
+    $guests = [];
+    foreach ($decoded as $guest) {
+        if (is_array($guest)) {
+            $guests[] = $guest;
+        }
+    }
+
+    return $guests;
 }

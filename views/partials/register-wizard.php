@@ -4,23 +4,27 @@ $group_limits = is_array($group_limits ?? null) ? $group_limits : ['min' => 1, '
 $registration_config = is_array($registration_config ?? null) ? $registration_config : [];
 $pricing_preview = is_array($pricing_preview ?? null) ? $pricing_preview : [];
 $members_input = is_array($members_input ?? null) ? $members_input : [];
+$guests_input = is_array($guests_input ?? null) ? $guests_input : [];
 $active_promotion = is_array($active_promotion ?? null) ? $active_promotion : null;
+$guest_schema = is_array($guest_schema ?? null) ? $guest_schema : ['fields' => [], 'enabled' => false, 'label_singular' => 'Guest', 'label_plural' => 'Guests', 'min' => 0, 'max' => 0, 'price' => 0];
 $mode = (string) ($registration_config['mode'] ?? 'group_flat');
 $require_all_members = !empty($group_limits['require_all_members']);
 $schema_json = wp_json_encode($form_schema);
+$guest_schema_json = wp_json_encode($guest_schema);
 $limits_json = wp_json_encode([
     'min'                 => (int) ($group_limits['min'] ?? 1),
     'max'                 => (int) ($group_limits['max'] ?? 1),
     'require_all_members' => $require_all_members,
 ]);
 $members_json = wp_json_encode($members_input !== [] ? $members_input : []);
+$guests_json = wp_json_encode($guests_input !== [] ? $guests_input : []);
 $pricing_json = wp_json_encode($pricing_preview);
 $input_class = 'w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none';
 ?>
 
 <div
     x-data="rmRegisterWizard()"
-    x-init="init(<?php echo esc_attr($schema_json); ?>, <?php echo esc_attr($limits_json); ?>, <?php echo esc_attr($members_json); ?>, <?php echo esc_attr($pricing_json); ?>)"
+    x-init="init(<?php echo esc_attr($schema_json); ?>, <?php echo esc_attr($limits_json); ?>, <?php echo esc_attr($members_json); ?>, <?php echo esc_attr($pricing_json); ?>, <?php echo esc_attr($guest_schema_json); ?>, <?php echo esc_attr($guests_json); ?>)"
     class="space-y-6"
 >
     <div class="flex flex-wrap items-center gap-2 text-sm text-slate-600">
@@ -43,6 +47,7 @@ $input_class = 'w-full rounded-lg border border-slate-300 bg-white px-3 py-2 tex
             <input type="hidden" name="event_promotion_id" value="<?php echo esc_attr((string) (int) $active_promotion['id']); ?>" />
         <?php endif; ?>
         <input type="hidden" name="members_json" :value="serializedMembers" />
+        <input type="hidden" name="guests_json" :value="serializedGuests" />
 
         <div x-show="step === 0" class="space-y-4">
             <h3 class="text-base font-semibold text-slate-900">Group leader</h3>
@@ -129,6 +134,68 @@ $input_class = 'w-full rounded-lg border border-slate-300 bg-white px-3 py-2 tex
                 </p>
             </div>
 
+            <template x-if="guestSchema.enabled">
+                <div class="mt-6 border-t border-slate-200 pt-6 space-y-4">
+                    <div class="flex items-center justify-between">
+                        <h3 class="text-base font-semibold text-slate-900" x-text="guestSchema.label_plural || 'Guests'"></h3>
+                        <p class="text-sm text-slate-500">
+                            <span x-text="guests.length"></span> of <span x-text="guestSchema.max"></span>
+                            <template x-if="guestSchema.price > 0">
+                                <span class="ml-1 text-slate-400">· <span x-text="'$' + parseFloat(guestSchema.price).toFixed(2)"></span> each</span>
+                            </template>
+                        </p>
+                    </div>
+
+                    <template x-for="(guest, gIdx) in guests" :key="'guest-' + gIdx">
+                        <div class="rounded-lg border border-slate-200 p-4 space-y-4">
+                            <h4 class="text-sm font-medium text-slate-800">
+                                <span x-text="guestSchema.label_singular || 'Guest'"></span> <span x-text="gIdx + 1"></span>
+                            </h4>
+                            <div class="grid grid-cols-1 sm:grid-cols-2 gap-5">
+                                <template x-for="field in guestSchema.fields" :key="'g-' + gIdx + '-' + field.key">
+                                    <div :class="wideField(field) ? 'sm:col-span-2' : ''">
+                                        <label class="block text-sm font-medium text-slate-700 mb-2" x-text="field.label + (field.required ? ' *' : '')"></label>
+                                        <template x-if="field.type === 'textarea'">
+                                            <textarea class="<?php echo esc_attr($input_class); ?>" rows="3" x-model="guests[gIdx][field.key]"></textarea>
+                                        </template>
+                                        <template x-if="field.type === 'select'">
+                                            <select class="<?php echo esc_attr($input_class); ?>" x-model="guests[gIdx][field.key]">
+                                                <option value="">Please select</option>
+                                                <template x-for="opt in (field.options || [])" :key="opt.value || opt">
+                                                    <option :value="opt.value || opt" x-text="opt.label || opt"></option>
+                                                </template>
+                                            </select>
+                                        </template>
+                                        <template x-if="!['textarea','select','checkbox','checkbox_group','radio'].includes(field.type)">
+                                            <input class="<?php echo esc_attr($input_class); ?>" :type="inputType(field.type)" x-model="guests[gIdx][field.key]" />
+                                        </template>
+                                    </div>
+                                </template>
+                            </div>
+                        </div>
+                    </template>
+
+                    <div class="flex gap-3">
+                        <button
+                            type="button"
+                            x-show="guests.length < guestSchema.max"
+                            @click="addGuest()"
+                            class="rounded-lg border border-indigo-200 bg-indigo-50 px-4 py-2 text-sm font-medium text-indigo-700 hover:bg-indigo-100"
+                        >
+                            Add <span x-text="(guestSchema.label_singular || 'Guest').toLowerCase()"></span>
+                        </button>
+                        <button
+                            type="button"
+                            x-show="guests.length > guestSchema.min"
+                            @click="removeGuest()"
+                            class="rounded-lg border border-slate-200 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+                        >
+                            Remove last <span x-text="(guestSchema.label_singular || 'guest').toLowerCase()"></span>
+                        </button>
+                    </div>
+                </div>
+            </template>
+
             <div class="pt-2 flex justify-between">
                 <button type="button" @click="step = 0" class="text-sm font-medium text-slate-700 hover:text-slate-900">Back</button>
                 <button type="button" @click="nextToSummary()" class="rounded-lg bg-indigo-700 px-5 py-2.5 text-sm font-medium text-white hover:bg-indigo-800">Review summary</button>
@@ -145,6 +212,15 @@ $input_class = 'w-full rounded-lg border border-slate-300 bg-white px-3 py-2 tex
                             <p class="text-sm text-slate-600" x-text="member.email || '—'"></p>
                         </div>
                         <p class="text-sm font-medium text-slate-800" x-text="memberPriceDisplay(index)"></p>
+                    </div>
+                </template>
+                <template x-for="(guest, gIdx) in guests" :key="'gsummary-' + gIdx">
+                    <div class="p-4 flex items-start justify-between gap-4 bg-slate-50/50">
+                        <div>
+                            <p class="text-sm font-medium text-slate-900" x-text="guestLabel(guest, gIdx)"></p>
+                            <p class="text-xs text-slate-500" x-text="guestSchema.label_singular || 'Guest'"></p>
+                        </div>
+                        <p class="text-sm font-medium text-slate-800" x-text="guestPriceDisplay()"></p>
                     </div>
                 </template>
             </div>
@@ -165,14 +241,27 @@ $input_class = 'w-full rounded-lg border border-slate-300 bg-white px-3 py-2 tex
 function rmRegisterWizard() {
     return {
         step: 0,
-        stepLabels: ['Leader', 'Members', 'Summary'],
+        get stepLabels() {
+            const isIndividual = this.limits.max <= 1;
+            if (isIndividual && this.guestSchema.enabled) {
+                return ['Registrant', (this.guestSchema.label_plural || 'Guests'), 'Summary'];
+            }
+            return ['Leader', 'Members', 'Summary'];
+        },
         schema: { fields: [] },
+        guestSchema: { fields: [], enabled: false, label_singular: 'Guest', label_plural: 'Guests', min: 0, max: 0, price: 0 },
         limits: { min: 1, max: 1, require_all_members: false },
         members: [],
+        guests: [],
         serializedMembers: '[]',
+        serializedGuests: '[]',
         pricing: {},
-        init(schema, limits, members, pricing) {
+        init(schema, limits, members, pricing, guestSchema, guestsInput) {
             this.schema = schema || { fields: [] };
+            this.guestSchema = Object.assign(
+                { fields: [], enabled: false, label_singular: 'Guest', label_plural: 'Guests', min: 0, max: 0, price: 0 },
+                guestSchema || {}
+            );
             this.limits = Object.assign({ min: 1, max: 1, require_all_members: false }, limits || {});
             this.pricing = pricing || {};
             this.members = Array.isArray(members) && members.length ? members : [this.emptyMember()];
@@ -181,6 +270,10 @@ function rmRegisterWizard() {
             if (this.limits.require_all_members && this.members.length > this.limits.max) {
                 this.members = this.members.slice(0, this.limits.max);
             }
+            if (this.guestSchema.enabled) {
+                this.guests = Array.isArray(guestsInput) && guestsInput.length ? guestsInput : [];
+                while (this.guests.length < this.guestSchema.min) this.addGuest();
+            }
         },
         emptyMember() {
             const member = {};
@@ -188,6 +281,13 @@ function rmRegisterWizard() {
                 member[field.key] = field.type === 'checkbox' ? false : (field.type === 'checkbox_group' ? [] : '');
             });
             return member;
+        },
+        emptyGuest() {
+            const guest = {};
+            (this.guestSchema.fields || []).forEach((field) => {
+                guest[field.key] = field.type === 'checkbox' ? false : (field.type === 'checkbox_group' ? [] : '');
+            });
+            return guest;
         },
         wideField(field) {
             return ['textarea', 'radio', 'checkbox_group'].includes(field.type);
@@ -206,15 +306,27 @@ function rmRegisterWizard() {
             if (this.limits.require_all_members) return;
             if (this.members.length > this.limits.min) this.members.pop();
         },
-        validateMember(member) {
-            for (const field of (this.schema.fields || [])) {
+        addGuest() {
+            if (this.guests.length < this.guestSchema.max) this.guests.push(this.emptyGuest());
+        },
+        removeGuest() {
+            if (this.guests.length > this.guestSchema.min) this.guests.pop();
+        },
+        validateFields(fields, data) {
+            for (const field of (fields || [])) {
                 if (!field.required) continue;
-                const val = member[field.key];
+                const val = data[field.key];
                 if (field.type === 'checkbox' && !val) return false;
                 if (field.type === 'checkbox_group' && (!Array.isArray(val) || !val.length)) return false;
                 if (val === '' || val === null || val === undefined) return false;
             }
             return true;
+        },
+        validateMember(member) {
+            return this.validateFields(this.schema.fields, member);
+        },
+        validateGuest(guest) {
+            return this.validateFields(this.guestSchema.fields, guest);
         },
         nextFromLeader() {
             if (!this.validateMember(this.members[0])) {
@@ -234,11 +346,29 @@ function rmRegisterWizard() {
                     return;
                 }
             }
+            if (this.guestSchema.enabled) {
+                const gLabel = (this.guestSchema.label_singular || 'guest').toLowerCase();
+                if (this.guests.length < this.guestSchema.min) {
+                    alert('At least ' + this.guestSchema.min + ' ' + gLabel + '(s) required.');
+                    return;
+                }
+                for (let g = 0; g < this.guests.length; g++) {
+                    if (!this.validateGuest(this.guests[g])) {
+                        alert('Please complete all required fields for ' + gLabel + ' ' + (g + 1) + '.');
+                        return;
+                    }
+                }
+            }
             this.step = 2;
         },
         memberLabel(member, index) {
             const name = [member.given_name, member.family_name].filter(Boolean).join(' ');
             return (index === 0 ? 'Leader' : 'Member ' + (index + 1)) + (name ? ': ' + name : '');
+        },
+        guestLabel(guest, index) {
+            const name = [guest.given_name, guest.family_name].filter(Boolean).join(' ');
+            const label = this.guestSchema.label_singular || 'Guest';
+            return label + ' ' + (index + 1) + (name ? ': ' + name : '');
         },
         memberPriceDisplay(index) {
             const item = (this.pricing.member_pricing || [])[index];
@@ -246,17 +376,25 @@ function rmRegisterWizard() {
             const price = parseFloat(item.unit_price || 0);
             return price > 0 ? '$' + price.toFixed(2) : 'FREE';
         },
+        guestPriceDisplay() {
+            const price = parseFloat(this.guestSchema.price || 0);
+            return price > 0 ? '$' + price.toFixed(2) : 'FREE';
+        },
         get totalDisplay() {
-            if (this.pricing.total_display) return this.pricing.total_display;
             let total = 0;
+            if (this.pricing.total_display && !this.guestSchema.enabled) return this.pricing.total_display;
             for (let i = 0; i < this.members.length; i++) {
                 const item = (this.pricing.member_pricing || [])[i];
                 total += item ? parseFloat(item.unit_price || 0) : 0;
+            }
+            if (this.guestSchema.enabled) {
+                total += this.guests.length * parseFloat(this.guestSchema.price || 0);
             }
             return total > 0 ? '$' + total.toFixed(2) : 'FREE';
         },
         prepareSubmit() {
             this.serializedMembers = JSON.stringify(this.members);
+            this.serializedGuests = this.guestSchema.enabled ? JSON.stringify(this.guests) : '[]';
         }
     };
 }
