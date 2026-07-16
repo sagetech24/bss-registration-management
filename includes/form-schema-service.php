@@ -12,7 +12,7 @@ function rm_form_core_field_definitions(): array
         ],
         'title' => [
             'key' => 'title', 'type' => 'select', 'label' => 'Title',
-            'required' => true, 'source' => 'core', 'maps_to' => 'title', 'order' => 2,
+            'placeholder' => 'Please select title', 'required' => true, 'source' => 'core', 'maps_to' => 'title', 'order' => 2,
             'options' => array_map(
                 static fn (string $value): array => ['value' => $value, 'label' => $value],
                 rm_registration_title_options()
@@ -20,7 +20,7 @@ function rm_form_core_field_definitions(): array
         ],
         'christian_name' => [
             'key' => 'christian_name', 'type' => 'text', 'label' => 'Christian name',
-            'required' => true, 'source' => 'core', 'maps_to' => 'christian_name', 'order' => 3,
+            'placeholder' => 'e.g. John', 'required' => true, 'source' => 'core', 'maps_to' => 'christian_name', 'order' => 3,
         ],
         'given_name' => [
             'key' => 'given_name', 'type' => 'text', 'label' => 'Given name',
@@ -28,35 +28,35 @@ function rm_form_core_field_definitions(): array
         ],
         'family_name' => [
             'key' => 'family_name', 'type' => 'text', 'label' => 'Family name',
-            'required' => true, 'source' => 'core', 'maps_to' => 'family_name', 'order' => 5,
+            'placeholder' => 'e.g. Tan', 'required' => true, 'source' => 'core', 'maps_to' => 'family_name', 'order' => 5,
         ],
         'certificate_name' => [
             'key' => 'certificate_name', 'type' => 'text', 'label' => 'Certificate name',
-            'required' => true, 'source' => 'core', 'maps_to' => 'certificate_name', 'order' => 6,
+            'placeholder' => 'e.g. James Tan', 'required' => true, 'source' => 'core', 'maps_to' => 'certificate_name', 'order' => 6,
         ],
         'email' => [
             'key' => 'email', 'type' => 'email', 'label' => 'Email address',
-            'required' => true, 'source' => 'core', 'maps_to' => 'email', 'order' => 7,
+            'placeholder' => 'e.g. name@example.com', 'required' => true, 'source' => 'core', 'maps_to' => 'email', 'order' => 7,
         ],
         'contact' => [
             'key' => 'contact', 'type' => 'phone', 'label' => 'Contact number',
-            'required' => true, 'source' => 'core', 'maps_to' => 'contact', 'order' => 8,
+            'placeholder' => 'e.g. 91234567', 'required' => true, 'source' => 'core', 'maps_to' => 'contact', 'order' => 8,
         ],
         'address1' => [
             'key' => 'address1', 'type' => 'text', 'label' => 'Address 1',
-            'required' => true, 'source' => 'core', 'maps_to' => 'address1', 'order' => 9,
+            'placeholder' => 'e.g. 123 Street Name', 'required' => true, 'source' => 'core', 'maps_to' => 'address1', 'order' => 9,
         ],
         'address2' => [
             'key' => 'address2', 'type' => 'text', 'label' => 'Address 2',
-            'required' => false, 'source' => 'core', 'maps_to' => 'address2', 'order' => 10,
+            'placeholder' => 'e.g. Unit #01-01', 'required' => false, 'source' => 'core', 'maps_to' => 'address2', 'order' => 10,
         ],
         'postcode' => [
             'key' => 'postcode', 'type' => 'text', 'label' => 'Postal code',
-            'required' => true, 'source' => 'core', 'maps_to' => 'postcode', 'order' => 11,
+            'placeholder' => 'e.g. 123456', 'required' => true, 'source' => 'core', 'maps_to' => 'postcode', 'order' => 11,
         ],
         'church_name' => [
             'key' => 'church_name', 'type' => 'text', 'label' => 'Church name',
-            'required' => true, 'source' => 'core', 'maps_to' => 'church_name', 'order' => 12,
+            'placeholder' => 'e.g. Church of Singapore', 'required' => true, 'source' => 'core', 'maps_to' => 'church_name', 'order' => 12,
         ],
     ];
 }
@@ -310,9 +310,7 @@ function rm_form_normalize_admin_custom_fields_input(mixed $rows): array
         ];
 
         $placeholder = sanitize_text_field((string) ($row['placeholder'] ?? ''));
-        if ($placeholder !== '') {
-            $field['placeholder'] = $placeholder;
-        }
+        $field['placeholder'] = $placeholder !== '' ? $placeholder : $label;
 
         if (in_array($type, ['select', 'radio', 'checkbox_group'], true)) {
             $options = [];
@@ -525,6 +523,14 @@ function rm_form_normalize_fields(array $fields, array $core_defs): array
         $merged['label'] = sanitize_text_field((string) ($merged['label'] ?? $key));
         $merged['required'] = !empty($merged['required']);
         $merged['source'] = ($merged['source'] ?? 'custom') === 'core' ? 'core' : 'custom';
+
+        $placeholder = sanitize_text_field((string) ($merged['placeholder'] ?? ''));
+        if ($placeholder === '') {
+            $placeholder = $merged['source'] === 'custom'
+                ? $merged['label']
+                : sanitize_text_field((string) ($base['placeholder'] ?? $merged['label']));
+        }
+        $merged['placeholder'] = $placeholder;
 
         if ($merged['source'] === 'core' && !empty($base['maps_to'])) {
             $merged['maps_to'] = $base['maps_to'];

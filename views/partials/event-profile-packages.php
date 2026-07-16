@@ -74,6 +74,12 @@ document.addEventListener('alpine:init', () => {
                 valid_until_local: '',
             };
         },
+        applyIndividualLimits() {
+            if (this.form.registration_mode === 'individual') {
+                this.form.member_min = 1;
+                this.form.member_max = 1;
+            }
+        },
         openCreate() {
             this.form = this.blankForm();
             this.modalOpen = true;
@@ -98,10 +104,16 @@ document.addEventListener('alpine:init', () => {
                 valid_from_local: promo.valid_from_local || '',
                 valid_until_local: promo.valid_until_local || '',
             };
+            this.applyIndividualLimits();
             this.modalOpen = true;
         },
         closeModal() {
             this.modalOpen = false;
+        },
+        init() {
+            this.$watch('form.registration_mode', () => {
+                this.applyIndividualLimits();
+            });
         },
         async copyPromoUrl(id) {
             const promo = this.promotions.find((row) => Number(row.id) === Number(id));
@@ -279,7 +291,7 @@ document.addEventListener('alpine:init', () => {
                 </div>
                 <div>
                     <label class="block text-sm font-medium text-slate-700 mb-1.5">Registration mode</label>
-                    <select name="registration_mode" x-model="form.registration_mode" class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none">
+                    <select name="registration_mode" x-model="form.registration_mode" @change="applyIndividualLimits()" class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none">
                         <option value="individual">Individual</option>
                         <option value="group_flat">Group flat</option>
                         <option value="group_per_head">Group per-head</option>
@@ -293,11 +305,11 @@ document.addEventListener('alpine:init', () => {
                 <div class="grid grid-cols-2 gap-3">
                     <div>
                         <label class="block text-sm font-medium text-slate-700 mb-1.5">Member min</label>
-                        <input type="number" min="1" name="member_min" x-model="form.member_min" class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none" />
+                        <input type="number" min="1" name="member_min" x-model="form.member_min" :readonly="form.registration_mode === 'individual'" :class="form.registration_mode === 'individual' ? 'bg-slate-50 text-slate-500' : 'bg-white'" class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none" />
                     </div>
                     <div>
                         <label class="block text-sm font-medium text-slate-700 mb-1.5">Member max</label>
-                        <input type="number" min="1" name="member_max" x-model="form.member_max" class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none" />
+                        <input type="number" min="1" name="member_max" x-model="form.member_max" :readonly="form.registration_mode === 'individual'" :class="form.registration_mode === 'individual' ? 'bg-slate-50 text-slate-500' : 'bg-white'" class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none" />
                     </div>
                 </div>
                 <div class="grid grid-cols-2 gap-3">

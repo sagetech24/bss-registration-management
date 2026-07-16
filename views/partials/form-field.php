@@ -11,6 +11,9 @@ $type = (string) ($field['type'] ?? 'text');
 $label = (string) ($field['label'] ?? $key);
 $required = !empty($field['required']);
 $placeholder = (string) ($field['placeholder'] ?? '');
+if ($placeholder === '') {
+    $placeholder = $label;
+}
 $name = ($name_prefix ?? '') . $key;
 $error_key = ($error_prefix ?? '') . $key;
 $field_error = is_array($form_errors ?? null) && isset($form_errors[$error_key])
@@ -54,7 +57,7 @@ if ($key === '' || $type === 'hidden') {
             <?php echo $required ? 'required' : ''; ?>
             class="<?php echo esc_attr($field_class); ?>"
         >
-            <option value="">Please select</option>
+            <option value=""><?php echo esc_html($placeholder !== '' ? $placeholder : 'Please select'); ?></option>
             <?php foreach (($field['options'] ?? []) as $option) : ?>
                 <?php
                 $opt_value = is_array($option) ? (string) ($option['value'] ?? '') : (string) $option;
@@ -165,7 +168,7 @@ if ($key === '' || $type === 'hidden') {
                 autocomplete="tel-national"
                 value="<?php echo esc_attr($phone_parts['local']); ?>"
                 <?php echo $required ? 'required' : ''; ?>
-                placeholder="<?php echo esc_attr($placeholder !== '' ? $placeholder : 'Contact number'); ?>"
+                placeholder="<?php echo esc_attr($placeholder); ?>"
                 class="<?php echo esc_attr($local_input_class); ?>"
             />
         </div>
@@ -185,7 +188,15 @@ if ($key === '' || $type === 'hidden') {
             type="<?php echo esc_attr($html_type); ?>"
             value="<?php echo esc_attr(is_scalar($value ?? '') ? (string) $value : ''); ?>"
             <?php echo $required ? 'required' : ''; ?>
-            placeholder="<?php echo esc_attr($placeholder); ?>"
+            <?php if ($html_type !== 'date') : ?>
+                placeholder="<?php echo esc_attr($placeholder); ?>"
+            <?php endif; ?>
+            <?php if ($html_type === 'email') : ?>
+                autocomplete="email"
+                inputmode="email"
+                pattern="^[a-zA-Z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)+$"
+                title="Please enter a valid email address (e.g. name@example.com)"
+            <?php endif; ?>
             class="<?php echo esc_attr($field_class); ?>"
         />
     <?php endif; ?>
