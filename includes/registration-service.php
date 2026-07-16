@@ -678,21 +678,35 @@ function rm_present_registration_event(array $event): array
     $program_code = isset($event['programCode']) ? trim((string) $event['programCode']) : '';
 
     $date_display = '';
+    $time_display = '';
+    $start_time = isset($event['startTime']) ? trim((string) $event['startTime']) : '';
+    $end_time = isset($event['endTime']) ? trim((string) $event['endTime']) : '';
+
     if (!empty($event['customDate'])) {
         $date_display = wp_strip_all_tags((string) $event['customDate']);
-    } elseif (!empty($event['startDate'])) {
-        $sd = strtotime((string) $event['startDate']);
-        if ($sd) {
-            $date_display = date_i18n(get_option('date_format'), $sd);
-            $st = isset($event['startTime']) ? trim((string) $event['startTime']) : '';
-            if ($st !== '') {
-                $date_display .= ' ' . $st;
+    } else {
+        $start_ts = !empty($event['startDate']) ? strtotime((string) $event['startDate']) : false;
+        $end_ts = !empty($event['endDate']) ? strtotime((string) $event['endDate']) : false;
+
+        if ($start_ts) {
+            $date_display = date_i18n(get_option('date_format'), $start_ts);
+            if ($end_ts && date('Y-m-d', $end_ts) !== date('Y-m-d', $start_ts)) {
+                $date_display .= ' – ' . date_i18n(get_option('date_format'), $end_ts);
             }
         }
     }
 
+    if ($start_time !== '' && $end_time !== '' && $end_time !== $start_time) {
+        $time_display = $start_time . ' – ' . $end_time;
+    } elseif ($start_time !== '') {
+        $time_display = $start_time;
+    } elseif ($end_time !== '') {
+        $time_display = $end_time;
+    }
+
     $venue = isset($event['venue']) ? trim(wp_strip_all_tags((string) $event['venue'])) : '';
     $thumb_url = isset($event['thumb']) ? trim((string) $event['thumb']) : '';
+    $description = isset($event['description']) ? trim((string) $event['description']) : '';
 
     $price_num = rm_event_registration_price($event);
     $event_currency = rm_registration_currency($event);
@@ -702,8 +716,10 @@ function rm_present_registration_event(array $event): array
         'title'          => $title,
         'program_code'   => $program_code,
         'date_display'   => $date_display,
+        'time_display'   => $time_display,
         'venue'          => $venue,
         'thumb_url'      => $thumb_url,
+        'description'    => $description,
         'amount_display' => $amount_display,
     ];
 }

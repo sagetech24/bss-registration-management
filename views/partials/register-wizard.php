@@ -49,7 +49,8 @@ $phone_fixed_class = 'inline-flex items-center rounded-l-lg border border-r-0 bo
         </template>
     </div>
 
-    <form method="post" action="<?php echo esc_url($page_url); ?>" @submit="prepareSubmit">
+    <div class="bg-white border border-slate-200 rounded-xl shadow-sm p-6">
+        <form method="post" action="<?php echo esc_url($page_url); ?>" @submit="prepareSubmit">
         <?php wp_nonce_field('rm_register', 'rm_register_nonce'); ?>
         <?php if ($active_promotion !== null) : ?>
             <input type="hidden" name="event_promotion_id" value="<?php echo esc_attr((string) (int) $active_promotion['id']); ?>" />
@@ -308,6 +309,7 @@ $phone_fixed_class = 'inline-flex items-center rounded-l-lg border border-r-0 bo
             </div>
         </div>
     </form>
+    </div>
 </div>
 
 <script>

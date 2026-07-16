@@ -44,6 +44,7 @@ function rm_build_register_context(): array
         'package_slug'        => $package_slug,
         'event'               => null,
         'event_present'       => null,
+        'event_not_found'     => false,
         'active_promotion'    => null,
         'promotion_present'   => null,
         'form_input'          => $form_input,
@@ -56,24 +57,28 @@ function rm_build_register_context(): array
 
     if ($event_code === '') {
         $context['error_message'] = 'No event was selected. Please use a valid registration link.';
+        $context['event_not_found'] = true;
 
         return $context;
     }
 
     $event_fetch = rm_fetch_event($event_code);
-    if ($event_fetch['error'] !== '') {
-        $context['error_message'] = $event_fetch['error'];
+    $event = is_array($event_fetch['event']) && $event_fetch['event'] !== []
+        ? $event_fetch['event']
+        : null;
+
+    if ($event === null) {
+        $context['selected_event_code'] = $event_code;
+        $context['error_message'] = $event_fetch['error'] !== ''
+            ? $event_fetch['error']
+            : 'This event could not be found.';
+
+        if (rm_is_event_not_found($event_code, null, $event_fetch['error'])) {
+            $context['event_not_found'] = true;
+        }
 
         return $context;
     }
-
-    if (!is_array($event_fetch['event']) || empty($event_fetch['event'])) {
-        $context['error_message'] = 'This event could not be found.';
-
-        return $context;
-    }
-
-    $event = $event_fetch['event'];
     $context['event'] = $event;
     $context['event_present'] = rm_present_registration_event($event);
     $context['uses_v2'] = rm_event_uses_v2_registration($event);
