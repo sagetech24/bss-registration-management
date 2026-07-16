@@ -106,7 +106,7 @@ function rm_build_register_context(): array
         $promotion['_currency'] = rm_registration_currency($event);
     }
     $context['promotion_present'] = $promotion !== null
-        ? rm_present_event_promotion($promotion)
+        ? rm_present_event_promotion($promotion, $event)
         : null;
     $context['registration_config'] = rm_effective_registration_config($event, $promotion);
     $context['event_currency'] = rm_registration_currency($event);

@@ -106,7 +106,7 @@ function rm_present_event_package_urls(array $event, string $program_code): arra
     $out = [];
     foreach ($promotions as $promotion) {
         $promotion['_currency'] = $pkg_currency;
-        $present = rm_present_event_promotion($promotion);
+        $present = rm_present_event_promotion($promotion, $event);
         $out[] = [
             'title'         => $present['title'],
             'slug'          => $present['slug'],

@@ -296,12 +296,23 @@ function rm_effective_is_group_mode(array $event, ?array $promotion = null): boo
  * @param array<string, mixed> $promotion
  * @return array<string, mixed>
  */
-function rm_present_event_promotion(array $promotion): array
+function rm_present_event_promotion(array $promotion, ?array $event = null): array
 {
     $limits = rm_promotion_group_limits($promotion);
     $price = (float) ($promotion['package_price'] ?? 0);
     $promo_currency = (string) ($promotion['_currency'] ?? 'SGD');
     $price_display = rm_format_currency($price, $promo_currency);
+
+    // "Original" price is the normal registration base price without the selected
+    // package promotion (e.g., early-bird / event default).
+    $original_price_display = '';
+    if ($event !== null) {
+        $base = rm_pricing_base_price($event);
+        $original_price_display = rm_format_currency(
+            (float) ($base['base_price'] ?? 0),
+            $promo_currency
+        );
+    }
 
     $member_rule = '';
     if ($limits['require_all_members']) {
@@ -326,6 +337,7 @@ function rm_present_event_promotion(array $promotion): array
         'slug'                => (string) ($promotion['slug'] ?? ''),
         'title'               => (string) ($promotion['title'] ?? ''),
         'description'         => (string) ($promotion['description'] ?? ''),
+        'original_price_display' => $original_price_display,
         'price_display'       => $price_display,
         'package_price'       => $price,
         'member_rule'         => $member_rule,

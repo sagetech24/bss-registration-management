@@ -478,7 +478,7 @@ function rm_build_event_profile_context(array $events_by_year, string $requested
     $active_package_count = 0;
     foreach ($promotions_raw as $promotion) {
         $promotion['_currency'] = $event_currency;
-        $present = rm_present_event_promotion($promotion);
+        $present = rm_present_event_promotion($promotion, $selected_event);
         $present['package_href'] = $selected_event_code !== ''
             ? rm_registration_url([
                 'event_code' => $selected_event_code,
