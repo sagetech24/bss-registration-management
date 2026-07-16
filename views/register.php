@@ -5,6 +5,7 @@ $uses_v2 = !empty($uses_v2);
 $form_schema = is_array($form_schema ?? null) ? $form_schema : ['fields' => []];
 $is_group_mode = !empty($is_group_mode);
 $registration_config = is_array($registration_config ?? null) ? $registration_config : [];
+$mode = (string) ($registration_config['mode'] ?? 'group_flat');
 $group_limits = is_array($group_limits ?? null) ? $group_limits : ['min' => 1, 'max' => 1, 'require_all_members' => false];
 $pricing_preview = is_array($pricing_preview ?? null) ? $pricing_preview : [];
 $members_input = is_array($members_input ?? null) ? $members_input : [];
@@ -17,6 +18,7 @@ $success_message = (string) ($success_message ?? '');
 $order_number = (string) ($order_number ?? '');
 $error_message = (string) ($error_message ?? '');
 $responses = $members_input[0] ?? rm_form_empty_responses($form_schema);
+$privacy_policy_url = function_exists('get_privacy_policy_url') ? get_privacy_policy_url() : '';
 ?>
 
 <section class="space-y-6">
@@ -49,22 +51,29 @@ $responses = $members_input[0] ?? rm_form_empty_responses($form_schema);
                 </div>
             <?php else : ?>
                 <?php if ($promotion_present !== null) : ?>
-                    <div class="mb-4 rounded-xl border border-indigo-200 bg-indigo-50 p-4">
-                        <p class="text-xs font-semibold uppercase tracking-wider text-indigo-600">Registration package</p>
-                        <h3 class="mt-1 text-base font-semibold text-slate-900">
+                    <div class="mb-10 rounded-xl border border-indigo-200 bg-indigo-50 p-4">
+                        <p class="text-[10px] font-semibold uppercase tracking-wider text-indigo-600">Registration package</p>
+                        <h3 class="mt-1 text-2xl font-semibold text-slate-900">
                             <?php echo esc_html($promotion_present['title']); ?>
                         </h3>
-                        <p class="mt-1 text-sm text-slate-700">
-                            <?php echo esc_html($promotion_present['price_display']); ?>
-                            <?php if ($promotion_present['member_rule'] !== '') : ?>
-                                <span class="text-slate-500">·</span>
-                                <?php echo esc_html($promotion_present['member_rule']); ?>
-                            <?php endif; ?>
-                        </p>
                         <?php if ($promotion_present['description'] !== '') : ?>
-                            <p class="mt-2 text-sm text-slate-600"><?php echo esc_html($promotion_present['description']); ?></p>
+                            <p class="mt-1 text-sm text-slate-600"><?php echo 'About: ' . esc_html($promotion_present['description']); ?></p>
                         <?php endif; ?>
-                        <?php if ($individual_href !== '') : ?>
+                        <?php if ($promotion_present['member_rule'] !== '') : ?>
+                            <span class="text-slate-500 text-sm">Required:</span>
+                            <span class="text-slate-500 text-sm italic">
+                                <?php echo '(' . esc_html($promotion_present['member_rule']) . ')'; ?>
+                            </span>
+                        <?php endif; ?>
+                        <p class="mt-1 text-sm text-slate-700">
+                            <span class="text-red-500 text-lg line-through">
+                                <?php echo esc_html($promotion_present['original_price_display']); ?>
+                            </span>
+                            <span class="text-slate-800 text-lg font-semibold">
+                                <?php echo esc_html($promotion_present['price_display']); ?>
+                            </span>
+                        </p>
+                        <?php if ($mode !== 'individual') : ?>
                             <p class="mt-3 text-sm">
                                 <a href="<?php echo esc_url($individual_href); ?>" class="font-medium text-indigo-700 hover:text-indigo-900">
                                     Register individually instead
@@ -100,6 +109,18 @@ $responses = $members_input[0] ?? rm_form_empty_responses($form_schema);
                             <?php if ($active_promotion !== null) : ?>
                                 <input type="hidden" name="event_promotion_id" value="<?php echo esc_attr((string) (int) $active_promotion['id']); ?>" />
                             <?php endif; ?>
+
+                            <p class="text-xs text-slate-500 leading-relaxed">
+                                * By providing your contact details, you consent to our collection, use and disclosure of your personal data as described in our
+                                <?php if ($privacy_policy_url !== '') : ?>
+                                    <a href="<?php echo esc_url($privacy_policy_url); ?>" class="font-medium text-indigo-700 hover:text-indigo-900">
+                                        privacy policy
+                                    </a>
+                                <?php else : ?>
+                                    privacy policy
+                                <?php endif; ?>
+                                on our website. We do strive to limit the amount of personal data we collect to that which is sufficient to support the intended purpose of the collection.
+                            </p>
 
                             <?php if ($uses_v2) : ?>
                                 <?php
