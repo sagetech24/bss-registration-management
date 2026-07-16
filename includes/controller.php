@@ -88,6 +88,11 @@ function rm_build_register_context(): array
     if ($context['uses_v2']) {
         $resolved = rm_resolve_registration_promotion($event);
         if (!$resolved['ok']) {
+            if ($_SERVER['REQUEST_METHOD'] !== 'POST' && $package_slug !== '') {
+                wp_safe_redirect(rm_registration_url(['event_code' => $event_code]));
+                exit;
+            }
+
             $context['error_message'] = $resolved['error'];
             $context['event_present'] = null;
 
@@ -95,6 +100,11 @@ function rm_build_register_context(): array
         }
         $promotion = $resolved['promotion'];
     } elseif ($package_slug !== '') {
+        if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+            wp_safe_redirect(rm_registration_url(['event_code' => $event_code]));
+            exit;
+        }
+
         $context['error_message'] = 'This registration package is not available.';
         $context['event_present'] = null;
 
