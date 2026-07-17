@@ -443,6 +443,108 @@ function rm_payment_parse_event_id(string $reference): int
     return rm_payment_parse_reference($reference)['event_id'];
 }
 
+/**
+ * Resolve a v2 pending registration by its confirmation number.
+ *
+ * @return array{pending_id: int, event_id: int}
+ */
+function rm_payment_find_pending_by_confirmation(string $confirmation_number): array
+{
+    global $wpdb;
+
+    $confirmation_number = sanitize_text_field(trim($confirmation_number));
+    $empty = ['pending_id' => 0, 'event_id' => 0];
+
+    if ($confirmation_number === '' || !rm_event_registration_tables_exist()) {
+        return $empty;
+    }
+
+    $row = $wpdb->get_row(
+        $wpdb->prepare(
+            'SELECT `id`, `event_id` FROM `event_registration_pendings` WHERE `confirmation_number` = %s LIMIT 1',
+            $confirmation_number
+        ),
+        ARRAY_A
+    );
+
+    if (!is_array($row) || empty($row['id'])) {
+        return $empty;
+    }
+
+    return [
+        'pending_id' => absint($row['id']),
+        'event_id'   => isset($row['event_id']) ? absint($row['event_id']) : 0,
+    ];
+}
+
+/**
+ * Order number of an already-finalized v2 registration with this confirmation number.
+ */
+function rm_payment_find_finalized_order_by_confirmation(string $confirmation_number): string
+{
+    global $wpdb;
+
+    $confirmation_number = sanitize_text_field(trim($confirmation_number));
+    if ($confirmation_number === '' || !rm_event_registration_tables_exist()) {
+        return '';
+    }
+
+    $order = $wpdb->get_var(
+        $wpdb->prepare(
+            'SELECT `primary_order_number` FROM `event_registration` WHERE `confirmation_number` = %s LIMIT 1',
+            $confirmation_number
+        )
+    );
+
+    return is_string($order) ? $order : '';
+}
+
+/**
+ * Resolve pending/event ids from a HitPay reference. Supports the legacy
+ * RM-{pending}-{event} format and v2 confirmation numbers. For finalized
+ * v2 registrations (pending row already deleted) the event id is still
+ * resolved from event_registration; pending_id stays 0.
+ *
+ * @return array{pending_id: int, event_id: int}
+ */
+function rm_payment_resolve_reference(string $reference): array
+{
+    $reference = trim($reference);
+    if ($reference === '') {
+        return ['pending_id' => 0, 'event_id' => 0];
+    }
+
+    // Explicit legacy format is unambiguous.
+    if (str_starts_with($reference, 'RM-')) {
+        return rm_payment_parse_reference($reference);
+    }
+
+    // Confirmation numbers may be all-digits, so check them before the
+    // legacy bare-digit pending-id fallback in rm_payment_parse_reference().
+    $resolved = rm_payment_find_pending_by_confirmation($reference);
+    if ($resolved['pending_id'] > 0) {
+        return $resolved;
+    }
+
+    global $wpdb;
+
+    $confirmation_number = sanitize_text_field($reference);
+    if (rm_event_registration_tables_exist()) {
+        $event_id = $wpdb->get_var(
+            $wpdb->prepare(
+                'SELECT `event_id` FROM `event_registration` WHERE `confirmation_number` = %s LIMIT 1',
+                $confirmation_number
+            )
+        );
+
+        if (is_numeric($event_id) && (int) $event_id > 0) {
+            return ['pending_id' => 0, 'event_id' => (int) $event_id];
+        }
+    }
+
+    return rm_payment_parse_reference($reference);
+}
+
 function rm_payment_normalize_option(string $hitpay_type): string
 {
     $hitpay_type = strtolower(trim($hitpay_type));
@@ -541,7 +643,8 @@ function rm_payment_create_request(
     array $event,
     array $registrant,
     float $amount,
-    string $event_code
+    string $event_code,
+    string $confirmation_number = ''
 ): array {
     $event_id = isset($event['id']) ? absint($event['id']) : 0;
     $environment = rm_payment_environment($event_id);
@@ -553,7 +656,13 @@ function rm_payment_create_request(
     );
     $title = isset($event['title']) ? sanitize_text_field((string) $event['title']) : '';
     $start_date = isset($event['startDate']) ? (string) $event['startDate'] : '';
-    $reference = rm_payment_reference_for_pending($pending_id, $event_id);
+
+    // v2 registrations use their confirmation number as the HitPay reference;
+    // legacy pendings have no confirmation number and keep the RM-{pending}-{event} format.
+    $confirmation_number = sanitize_text_field(trim($confirmation_number));
+    $reference = $confirmation_number !== ''
+        ? $confirmation_number
+        : rm_payment_reference_for_pending($pending_id, $event_id);
 
     $redirect_url = add_query_arg(
         [
@@ -804,13 +913,24 @@ function rm_payment_handle_completed(int $pending_id, string $payment_request_id
     $pending = rm_payment_load_pending($pending_id);
     if ($pending === null) {
         $lookup = rm_payment_get_request($payment_request_id);
+        $lookup_reference = '';
         if ($lookup['ok'] && is_array($lookup['data'])) {
-            $resolved_pending_id = rm_payment_parse_pending_id(
-                (string) ($lookup['data']['reference_number'] ?? '')
-            );
-            if ($resolved_pending_id > 0) {
-                $pending_id = $resolved_pending_id;
+            $lookup_reference = (string) ($lookup['data']['reference_number'] ?? '');
+            $resolved = rm_payment_resolve_reference($lookup_reference);
+            if ($resolved['pending_id'] > 0) {
+                $pending_id = $resolved['pending_id'];
                 $pending = rm_payment_load_pending($pending_id);
+            }
+        }
+
+        if ($pending === null && $lookup_reference !== '') {
+            $finalized_order = rm_payment_find_finalized_order_by_confirmation($lookup_reference);
+            if ($finalized_order !== '') {
+                return [
+                    'ok'           => true,
+                    'order_number' => $finalized_order,
+                    'error'        => '',
+                ];
             }
         }
 
@@ -880,21 +1000,36 @@ function rm_payment_handle_completed(int $pending_id, string $payment_request_id
         ];
     }
 
-    $parsed_reference = rm_payment_parse_reference((string) ($hitpay_data['reference_number'] ?? ''));
-    if ($parsed_reference['pending_id'] > 0 && $parsed_reference['pending_id'] !== $pending_id) {
-        return [
-            'ok'           => false,
-            'order_number' => '',
-            'error'        => 'Payment reference does not match this registration.',
-        ];
-    }
+    $hitpay_reference = trim((string) ($hitpay_data['reference_number'] ?? ''));
+    $parsed_reference = rm_payment_parse_reference($hitpay_reference);
 
-    if ($parsed_reference['event_id'] > 0 && $parsed_reference['event_id'] !== $event_id) {
-        return [
-            'ok'           => false,
-            'order_number' => '',
-            'error'        => 'Payment reference does not match this event.',
-        ];
+    if ($parsed_reference['pending_id'] > 0) {
+        // Legacy RM-{pending}-{event} reference: ids must match the loaded pending row.
+        if ($parsed_reference['pending_id'] !== $pending_id) {
+            return [
+                'ok'           => false,
+                'order_number' => '',
+                'error'        => 'Payment reference does not match this registration.',
+            ];
+        }
+
+        if ($parsed_reference['event_id'] > 0 && $parsed_reference['event_id'] !== $event_id) {
+            return [
+                'ok'           => false,
+                'order_number' => '',
+                'error'        => 'Payment reference does not match this event.',
+            ];
+        }
+    } elseif ($hitpay_reference !== '' && !empty($pending['_v2']) && is_array($pending['_header'] ?? null)) {
+        // v2 confirmation-number reference: must match the pending header.
+        $pending_confirmation = trim((string) ($pending['_header']['confirmation_number'] ?? ''));
+        if ($pending_confirmation !== '' && !hash_equals($pending_confirmation, $hitpay_reference)) {
+            return [
+                'ok'           => false,
+                'order_number' => '',
+                'error'        => 'Payment reference does not match this registration.',
+            ];
+        }
     }
 
     if (!rm_payment_amount_matches($hitpay_data, $expected_amount)) {
@@ -985,15 +1120,24 @@ function rm_payment_initiate_checkout(
         ];
     }
 
-    if (
-        is_array($pending_row)
-        && !empty($pending_row['_v2'])
-        && is_array($pending_row['_primary'])
-    ) {
-        $registrant = rm_v2_registrant_for_payment($pending_row['_primary']);
+    $confirmation_number = '';
+    if (is_array($pending_row) && !empty($pending_row['_v2'])) {
+        if (is_array($pending_row['_primary'])) {
+            $registrant = rm_v2_registrant_for_payment($pending_row['_primary']);
+        }
+        if (is_array($pending_row['_header'])) {
+            $confirmation_number = trim((string) ($pending_row['_header']['confirmation_number'] ?? ''));
+        }
     }
 
-    $created = rm_payment_create_request($pending_id, $event, $registrant, $amount, $event_code);
+    $created = rm_payment_create_request(
+        $pending_id,
+        $event,
+        $registrant,
+        $amount,
+        $event_code,
+        $confirmation_number
+    );
     if (!$created['ok']) {
         return [
             'ok'    => false,
@@ -1048,7 +1192,7 @@ function rm_payment_parse_webhook_payload(string $raw_payload = ''): array
 function rm_payment_summarize_webhook_transaction(array $payload, array $context = []): array
 {
     $payment_request_id = rm_payment_extract_webhook_payment_request_id($payload);
-    $parsed_reference = rm_payment_parse_reference((string) ($payload['reference_number'] ?? ''));
+    $parsed_reference = rm_payment_resolve_reference((string) ($payload['reference_number'] ?? ''));
     $payment = is_array($payload['payments'][0] ?? null) ? $payload['payments'][0] : [];
 
     $transaction = [
@@ -1132,9 +1276,10 @@ function rm_payment_process_webhook_payload(array $payload): array
         );
     }
 
-    $parsed_reference = rm_payment_parse_reference((string) ($payload['reference_number'] ?? ''));
-    $pending_id = $parsed_reference['pending_id'];
-    $event_id = $parsed_reference['event_id'];
+    $payload_reference = trim((string) ($payload['reference_number'] ?? ''));
+    $resolved_reference = rm_payment_resolve_reference($payload_reference);
+    $pending_id = $resolved_reference['pending_id'];
+    $event_id = $resolved_reference['event_id'];
 
     $lookup = rm_payment_get_request($payment_request_id, $event_id);
     if (!$lookup['ok'] || !is_array($lookup['data'])) {
@@ -1152,19 +1297,49 @@ function rm_payment_process_webhook_payload(array $payload): array
         );
     }
 
+    $lookup_reference = trim((string) ($lookup['data']['reference_number'] ?? ''));
     if ($pending_id < 1 || $event_id < 1) {
-        $lookup_reference = rm_payment_parse_reference(
-            (string) ($lookup['data']['reference_number'] ?? '')
-        );
+        $resolved_lookup = rm_payment_resolve_reference($lookup_reference);
         if ($pending_id < 1) {
-            $pending_id = $lookup_reference['pending_id'];
+            $pending_id = $resolved_lookup['pending_id'];
         }
         if ($event_id < 1) {
-            $event_id = $lookup_reference['event_id'];
+            $event_id = $resolved_lookup['event_id'];
         }
     }
 
     if ($pending_id < 1) {
+        // The pending row may already have been finalized (e.g. via the
+        // payment-return redirect); confirmation numbers carry over to
+        // event_registration, so treat that as handled.
+        foreach (array_unique([$lookup_reference, $payload_reference]) as $reference) {
+            $finalized_order = rm_payment_find_finalized_order_by_confirmation($reference);
+            if ($finalized_order === '') {
+                continue;
+            }
+
+            if (function_exists('rm_email_send_payment_confirmation')) {
+                $email_result = rm_email_send_payment_confirmation($finalized_order);
+                if (!$email_result['ok']) {
+                    error_log(
+                        '[rm_payment] Confirmation email failed for order '
+                        . $finalized_order . ': ' . ($email_result['error'] ?? '')
+                    );
+                }
+            }
+
+            return rm_payment_build_webhook_response(
+                $payload,
+                true,
+                'Payment already processed.',
+                rm_payment_summarize_webhook_transaction($payload, [
+                    'event_id'     => $event_id,
+                    'order_number' => $finalized_order,
+                    'finalized'    => true,
+                ])
+            );
+        }
+
         return rm_payment_build_webhook_response(
             $payload,
             false,
@@ -1193,6 +1368,20 @@ function rm_payment_process_webhook_payload(array $payload): array
                 'error'        => $result['error'],
             ])
         );
+    }
+
+    if (!empty($result['order_number']) && function_exists('rm_email_send_payment_confirmation')) {
+        $email_result = rm_email_send_payment_confirmation((string) $result['order_number']);
+        if (!$email_result['ok']) {
+            error_log(
+                '[rm_payment] Confirmation email failed for order '
+                . $result['order_number'] . ': ' . ($email_result['error'] ?? '')
+            );
+        } elseif (!empty($email_result['dry_run'])) {
+            error_log(
+                '[rm_payment] Confirmation email dry-run for order ' . $result['order_number']
+            );
+        }
     }
 
     return rm_payment_build_webhook_response(

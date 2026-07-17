@@ -113,7 +113,7 @@ function rm_present_payment_transaction_row(array $charge): array
         ? ucwords(str_replace('_', ' ', $status))
         : 'Unknown';
 
-    $parsed_reference = rm_payment_parse_reference($summary['reference_number']);
+    $parsed_reference = rm_payment_resolve_reference($summary['reference_number']);
     $event_id = (int) ($parsed_reference['event_id'] ?? 0);
     $pending_id = (int) ($parsed_reference['pending_id'] ?? 0);
     $customer_phone = trim($summary['customer_phone'] ?? '');
