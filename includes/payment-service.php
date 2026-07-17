@@ -388,11 +388,11 @@ function rm_payment_methods(string $environment, string $currency = 'SGD'): arra
 
     // PayNow is SGD-only; non-SGD checkouts use card.
     if ($hitpay_currency !== 'SGD') {
-        return ['cards'];
+        return ['card'];
     }
 
     if ($environment === 'live') {
-        return ['paynow_online', 'cards'];
+        return ['paynow_online', 'card'];
     }
 
     return ['paynow_online'];
