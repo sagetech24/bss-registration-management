@@ -271,6 +271,23 @@ function rm_handle_payment_return(): void
         exit;
     }
 
+    // Webhooks only run on production; send the confirmation here so local
+    // and redirect-finalized registrations still get an email. The
+    // is_email_confirmation_sent flag prevents duplicates when both fire.
+    if (!empty($result['order_number']) && function_exists('rm_email_send_payment_confirmation')) {
+        $email_result = rm_email_send_payment_confirmation((string) $result['order_number']);
+        if (!$email_result['ok']) {
+            error_log(
+                '[rm_payment] Confirmation email failed for order '
+                . $result['order_number'] . ': ' . ($email_result['error'] ?? '')
+            );
+        } elseif (!empty($email_result['dry_run'])) {
+            error_log(
+                '[rm_payment] Confirmation email dry-run for order ' . $result['order_number']
+            );
+        }
+    }
+
     $flash_key = rm_store_registration_success_flash(
         $result['order_number'],
         'confirmed'
