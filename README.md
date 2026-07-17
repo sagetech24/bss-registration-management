@@ -20,14 +20,14 @@ Event registration and payment module for Bible Society Singapore (BSS). Runs as
 
 ## Installation
 
-1. Clone or copy this folder into the WordPress site root as `registration-manager/`.
+1. Clone or copy this folder into the WordPress site root. Use `registration-v2/` in production; the module derives its base URL from the deployed directory name.
 2. Ensure the parent `wp-load.php` is one level up (see `bootstrap.php`).
 3. Add the required constants to the parent `wp-config.php` (see below).
-4. Visit `/registration-manager/` on the site.
+4. Visit `/registration-v2/` on production (or the matching deployed directory on another environment).
 5. v2 tables are created automatically on first load via `rm_install_event_registration_tables()`. To run manually:
 
 ```bash
-php -r "require 'registration-manager/bootstrap.php'; print_r(rm_install_event_registration_tables());"
+php -r "require 'registration-v2/bootstrap.php'; print_r(rm_install_event_registration_tables());"
 ```
 
 Or apply `migrations/001_event_registration_tables.sql` and `migrations/002_event_promotions.sql` directly in MySQL.
@@ -36,7 +36,7 @@ Or apply `migrations/001_event_registration_tables.sql` and `migrations/002_even
 wordpress-root/
 ├── wp-load.php
 ├── wp-config.php
-└── registration-manager/
+└── registration-v2/
     ├── index.php
     ├── bootstrap.php
     ├── webhook.php
@@ -66,7 +66,9 @@ Payment webhooks are enabled only on production (`https://biblesociety.sg`). Oth
 
 ## Routes
 
-Base URL: `/registration-manager/`
+Production base URL: `https://www.biblesociety.sg/registration-v2/`
+
+The base URL is derived automatically from the deployed folder name through `rm_module_dir_name()`. Local installations may continue using `/registration-manager/`.
 
 | Query param | View |
 |-------------|------|
@@ -77,16 +79,16 @@ Base URL: `/registration-manager/`
 | `action=register&event_code=...` | Public registration form (default / individual) |
 | `action=register&event_code=...&package={slug}` | Public form for a named registration package |
 
-Legacy group redirect entry: `/registration-manager/redirect.php?e={event_id}` (for v2 group events)
+Legacy group redirect entry: `/registration-v2/redirect.php?e={event_id}` (for v2 group events)
 
-Webhook endpoint: `/registration-manager/webhook.php` (POST, production only)
+Webhook endpoint: `https://www.biblesociety.sg/registration-v2/webhook.php` (POST, production only)
 
 ### Registration package URLs
 
 Packages are optional alternate entry points. The default URL (no `package` param) always remains available for individual / default registration.
 
 ```
-/registration-manager/?action=register&event_code={programCode}&package=couple-promo
+/registration-v2/?action=register&event_code={programCode}&package=couple-promo
 ```
 
 | Intent | URL |
@@ -183,10 +185,10 @@ Staff dashboard: event cards list package links; registrants view shows a packag
 
 ### Legacy group URL redirect
 
-For v2 group events, redirect legacy theme URLs to registration-manager:
+For v2 group events, redirect legacy theme URLs to the deployed Registration Manager directory:
 
 1. **Automatic** (when WordPress theme loads): `rm_maybe_redirect_legacy_registration()` hooks `template_redirect` via bootstrap
-2. **Manual**: point legacy URLs to `/registration-manager/redirect.php?e={event_id}`
+2. **Manual**: point production legacy URLs to `/registration-v2/redirect.php?e={event_id}`
 3. **Theme change** (outside this module): replace legacy group template redirect with `rm_registration_url($program_code)`
 
 ## Project structure
@@ -201,7 +203,7 @@ includes/
   pricing-service.php          Server-side pricing (incl. early bird + packages)
   event-registration-service.php   v2 header pending/confirmed flow
   event-registrant-service.php     v2 line items + dashboard normalize
-  legacy-redirect.php          Legacy group URL → registration-manager
+  legacy-redirect.php          Legacy group URL → deployed module directory
   api-client.php          BSS REST API client
   auth.php                WordPress login guard
   controller.php          Request context builder
