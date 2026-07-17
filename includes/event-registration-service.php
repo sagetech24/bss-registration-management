@@ -220,14 +220,10 @@ function rm_v2_insert_confirmed_registration(
     $header['payment_status'] = 'free';
     $header['paid_at'] = current_time('mysql');
 
-    $wpdb->query('START TRANSACTION');
-
     $order_numbers = [];
     foreach ($member_rows as $index => $member_row) {
         $order_result = rm_allocate_registration_order_number($event_id, $source);
         if (!$order_result['ok']) {
-            $wpdb->query('ROLLBACK');
-
             return rm_v2_submit_error($order_result['error']);
         }
 
@@ -237,6 +233,8 @@ function rm_v2_insert_confirmed_registration(
     if (isset($order_numbers[0])) {
         $header['primary_order_number'] = $order_numbers[0];
     }
+
+    $wpdb->query('START TRANSACTION');
 
     $inserted = $wpdb->insert('event_registration', $header);
     if (!$inserted) {
@@ -293,6 +291,37 @@ function rm_v2_insert_confirmed_registration(
     ];
 }
 
+function rm_v2_delete_pending_registration(int $pending_id): void
+{
+    global $wpdb;
+
+    if ($pending_id < 1) {
+        return;
+    }
+
+    $wpdb->delete('event_registrant_pendings', ['registration_id' => $pending_id], ['%d']);
+    $wpdb->delete('event_registration_pendings', ['id' => $pending_id], ['%d']);
+}
+
+function rm_v2_find_order_by_confirmation(string $confirmation_number): string
+{
+    global $wpdb;
+
+    $confirmation_number = sanitize_text_field(trim($confirmation_number));
+    if ($confirmation_number === '') {
+        return '';
+    }
+
+    $order = $wpdb->get_var(
+        $wpdb->prepare(
+            'SELECT `primary_order_number` FROM `event_registration` WHERE `confirmation_number` = %s LIMIT 1',
+            $confirmation_number
+        )
+    );
+
+    return is_string($order) ? $order : '';
+}
+
 /**
  * Promote pending v2 registration to confirmed after payment.
  *
@@ -328,28 +357,17 @@ function rm_v2_finalize_paid_registration(int $pending_id, string $payment_reque
 
     $event_id = isset($header['event_id']) ? absint($header['event_id']) : 0;
     $source = rm_infer_event_source($event_id);
-    $primary_email = trim((string) ($header['primary_email'] ?? ''));
+    $confirmation_number = trim((string) ($header['confirmation_number'] ?? ''));
+    $existing_order = rm_v2_find_order_by_confirmation($confirmation_number);
 
-    if ($event_id > 0 && $primary_email !== '') {
-        $existing = $wpdb->get_var(
-            $wpdb->prepare(
-                'SELECT `primary_order_number` FROM `event_registration`
-                 WHERE `primary_email` = %s AND `event_id` = %d AND `payment_status` IN (%s, %s)
-                 LIMIT 1',
-                $primary_email,
-                $event_id,
-                'paid',
-                'free'
-            )
-        );
+    if ($existing_order !== '') {
+        rm_v2_delete_pending_registration($pending_id);
 
-        if (is_string($existing) && $existing !== '') {
-            return [
-                'ok'           => true,
-                'order_number' => $existing,
-                'error'        => '',
-            ];
-        }
+        return [
+            'ok'           => true,
+            'order_number' => $existing_order,
+            'error'        => '',
+        ];
     }
 
     $lines = $wpdb->get_results(
@@ -389,14 +407,10 @@ function rm_v2_finalize_paid_registration(int $pending_id, string $payment_reque
         ];
     }
 
-    $wpdb->query('START TRANSACTION');
-
     $order_numbers = [];
     foreach ($member_lines as $index => $line) {
         $order_result = rm_allocate_registration_order_number($event_id, $source);
         if (!$order_result['ok']) {
-            $wpdb->query('ROLLBACK');
-
             return [
                 'ok'           => false,
                 'order_number' => '',
@@ -409,6 +423,8 @@ function rm_v2_finalize_paid_registration(int $pending_id, string $payment_reque
 
     $primary_order_number = $order_numbers[0] ?? '';
 
+    $wpdb->query('START TRANSACTION');
+
     unset($header['id']);
     $header['payment_status'] = 'paid';
     $header['payment_request_id'] = sanitize_text_field($payment_request_id);
@@ -420,6 +436,18 @@ function rm_v2_finalize_paid_registration(int $pending_id, string $payment_reque
     $inserted = $wpdb->insert('event_registration', $header);
     if (!$inserted) {
         $wpdb->query('ROLLBACK');
+
+        $existing_order = rm_v2_find_order_by_confirmation($confirmation_number);
+        if ($existing_order !== '') {
+            rm_v2_delete_pending_registration($pending_id);
+
+            return [
+                'ok'           => true,
+                'order_number' => $existing_order,
+                'error'        => '',
+            ];
+        }
+
         error_log(
             '[rm_payment] event_registration insert failed for pending '
             . $pending_id . ': ' . $wpdb->last_error
@@ -480,8 +508,7 @@ function rm_v2_finalize_paid_registration(int $pending_id, string $payment_reque
         }
     }
 
-    $wpdb->delete('event_registrant_pendings', ['registration_id' => $pending_id], ['%d']);
-    $wpdb->delete('event_registration_pendings', ['id' => $pending_id], ['%d']);
+    rm_v2_delete_pending_registration($pending_id);
 
     $wpdb->query('COMMIT');
 

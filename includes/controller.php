@@ -255,7 +255,7 @@ function rm_handle_payment_return(): void
         exit;
     }
 
-    if ($payment_status !== 'completed' || $payment_reference === '') {
+    if (!rm_payment_return_is_completed($payment_status) || $payment_reference === '') {
         error_log(
             '[rm_payment] Payment return rejected before verification.'
             . ' pending_id=' . $pending_id

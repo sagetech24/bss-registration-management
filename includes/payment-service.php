@@ -897,6 +897,48 @@ function rm_payment_amount_matches(array $hitpay_data, float $expected_amount): 
 }
 
 /**
+ * @return array{ok: bool, data: array<string, mixed>|null, error: string}
+ */
+function rm_payment_fetch_completed_request(string $payment_request_id, int $event_id = 0): array
+{
+    $payment_request_id = sanitize_text_field($payment_request_id);
+    if ($payment_request_id === '') {
+        return [
+            'ok'    => false,
+            'data'  => null,
+            'error' => 'Payment reference is required.',
+        ];
+    }
+
+    $max_attempts = 3;
+    $lookup = [
+        'ok'    => false,
+        'data'  => null,
+        'error' => 'Payment is not completed.',
+    ];
+
+    for ($attempt = 1; $attempt <= $max_attempts; $attempt++) {
+        $lookup = rm_payment_get_request($payment_request_id, $event_id);
+        if ($lookup['ok'] && is_array($lookup['data']) && rm_payment_is_completed($lookup['data'])) {
+            return $lookup;
+        }
+
+        if ($attempt < $max_attempts) {
+            usleep(1500000);
+        }
+    }
+
+    return $lookup;
+}
+
+function rm_payment_return_is_completed(string $payment_status): bool
+{
+    $payment_status = strtolower(trim($payment_status));
+
+    return in_array($payment_status, ['completed', 'succeeded'], true);
+}
+
+/**
  * @return array{ok: bool, order_number: string, error: string}
  */
 function rm_payment_handle_completed(int $pending_id, string $payment_request_id): array
@@ -980,7 +1022,7 @@ function rm_payment_handle_completed(int $pending_id, string $payment_request_id
     $event_id = isset($pending['events']) ? absint($pending['events']) : 0;
     $expected_amount = isset($pending['amount']) ? (float) $pending['amount'] : 0.0;
 
-    $lookup = rm_payment_get_request($payment_request_id, $event_id);
+    $lookup = rm_payment_fetch_completed_request($payment_request_id, $event_id);
     if (!$lookup['ok'] || !is_array($lookup['data'])) {
         return [
             'ok'           => false,
@@ -990,14 +1032,6 @@ function rm_payment_handle_completed(int $pending_id, string $payment_request_id
     }
 
     $hitpay_data = $lookup['data'];
-
-    if (!rm_payment_is_completed($hitpay_data)) {
-        return [
-            'ok'           => false,
-            'order_number' => '',
-            'error'        => 'Payment is not completed.',
-        ];
-    }
 
     $hitpay_reference = trim((string) ($hitpay_data['reference_number'] ?? ''));
 
