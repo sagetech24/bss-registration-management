@@ -249,6 +249,13 @@ function rm_handle_payment_return(): void
     }
 
     if ($payment_status !== 'completed' || $payment_reference === '') {
+        error_log(
+            '[rm_payment] Payment return rejected before verification.'
+            . ' pending_id=' . $pending_id
+            . ' status=' . ($payment_status !== '' ? $payment_status : '(empty)')
+            . ' reference=' . ($payment_reference !== '' ? $payment_reference : '(empty)')
+        );
+
         $flash_key = rm_store_registration_success_flash('', 'payment_failed');
         wp_safe_redirect(
             rm_registration_url([
@@ -261,6 +268,13 @@ function rm_handle_payment_return(): void
 
     $result = rm_payment_handle_completed($pending_id, $payment_reference);
     if (!$result['ok']) {
+        error_log(
+            '[rm_payment] Payment return finalize failed.'
+            . ' pending_id=' . $pending_id
+            . ' reference=' . $payment_reference
+            . ' error=' . $result['error']
+        );
+
         $flash_key = rm_store_registration_success_flash('', 'payment_failed');
         wp_safe_redirect(
             rm_registration_url([

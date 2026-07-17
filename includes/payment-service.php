@@ -1000,27 +1000,11 @@ function rm_payment_handle_completed(int $pending_id, string $payment_request_id
     }
 
     $hitpay_reference = trim((string) ($hitpay_data['reference_number'] ?? ''));
-    $parsed_reference = rm_payment_parse_reference($hitpay_reference);
 
-    if ($parsed_reference['pending_id'] > 0) {
-        // Legacy RM-{pending}-{event} reference: ids must match the loaded pending row.
-        if ($parsed_reference['pending_id'] !== $pending_id) {
-            return [
-                'ok'           => false,
-                'order_number' => '',
-                'error'        => 'Payment reference does not match this registration.',
-            ];
-        }
-
-        if ($parsed_reference['event_id'] > 0 && $parsed_reference['event_id'] !== $event_id) {
-            return [
-                'ok'           => false,
-                'order_number' => '',
-                'error'        => 'Payment reference does not match this event.',
-            ];
-        }
-    } elseif ($hitpay_reference !== '' && !empty($pending['_v2']) && is_array($pending['_header'] ?? null)) {
+    if ($hitpay_reference !== '' && !empty($pending['_v2']) && is_array($pending['_header'] ?? null)) {
         // v2 confirmation-number reference: must match the pending header.
+        // Checked first because confirmation numbers are all-digits and would
+        // otherwise be misread as legacy pending ids by rm_payment_parse_reference().
         $pending_confirmation = trim((string) ($pending['_header']['confirmation_number'] ?? ''));
         if ($pending_confirmation !== '' && !hash_equals($pending_confirmation, $hitpay_reference)) {
             return [
@@ -1028,6 +1012,27 @@ function rm_payment_handle_completed(int $pending_id, string $payment_request_id
                 'order_number' => '',
                 'error'        => 'Payment reference does not match this registration.',
             ];
+        }
+    } else {
+        $parsed_reference = rm_payment_parse_reference($hitpay_reference);
+
+        if ($parsed_reference['pending_id'] > 0) {
+            // Legacy RM-{pending}-{event} reference: ids must match the loaded pending row.
+            if ($parsed_reference['pending_id'] !== $pending_id) {
+                return [
+                    'ok'           => false,
+                    'order_number' => '',
+                    'error'        => 'Payment reference does not match this registration.',
+                ];
+            }
+
+            if ($parsed_reference['event_id'] > 0 && $parsed_reference['event_id'] !== $event_id) {
+                return [
+                    'ok'           => false,
+                    'order_number' => '',
+                    'error'        => 'Payment reference does not match this event.',
+                ];
+            }
         }
     }
 

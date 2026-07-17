@@ -420,6 +420,10 @@ function rm_v2_finalize_paid_registration(int $pending_id, string $payment_reque
     $inserted = $wpdb->insert('event_registration', $header);
     if (!$inserted) {
         $wpdb->query('ROLLBACK');
+        error_log(
+            '[rm_payment] event_registration insert failed for pending '
+            . $pending_id . ': ' . $wpdb->last_error
+        );
 
         return [
             'ok'           => false,
@@ -440,6 +444,10 @@ function rm_v2_finalize_paid_registration(int $pending_id, string $payment_reque
         $line_inserted = $wpdb->insert('event_registrant', $line);
         if (!$line_inserted) {
             $wpdb->query('ROLLBACK');
+            error_log(
+                '[rm_payment] event_registrant insert failed for pending '
+                . $pending_id . ': ' . $wpdb->last_error
+            );
 
             return [
                 'ok'           => false,
@@ -459,6 +467,10 @@ function rm_v2_finalize_paid_registration(int $pending_id, string $payment_reque
         $line_inserted = $wpdb->insert('event_registrant', $line);
         if (!$line_inserted) {
             $wpdb->query('ROLLBACK');
+            error_log(
+                '[rm_payment] event_registrant guest insert failed for pending '
+                . $pending_id . ': ' . $wpdb->last_error
+            );
 
             return [
                 'ok'           => false,
