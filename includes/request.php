@@ -1,8 +1,16 @@
 <?php
 
+function rm_module_dir_name(): string
+{
+    // Folder this module is deployed under (e.g. registration-manager locally,
+    // registration-v2 in production). Derived from the code location so the
+    // same repo works regardless of the directory name.
+    return basename(dirname(__DIR__));
+}
+
 function rm_page_url(): string
 {
-    return home_url('/registration-manager/');
+    return home_url('/' . rm_module_dir_name() . '/');
 }
 
 function rm_event_filter_options(): array

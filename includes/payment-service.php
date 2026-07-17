@@ -347,7 +347,11 @@ function rm_payment_webhook_url(): ?string
         return null;
     }
 
-    return home_url('/registration-manager/webhook.php');
+    $dir_name = function_exists('rm_module_dir_name')
+        ? rm_module_dir_name()
+        : basename(dirname(__DIR__));
+
+    return home_url('/' . $dir_name . '/webhook.php');
 }
 
 /**
