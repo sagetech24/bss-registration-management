@@ -391,25 +391,6 @@ function rm_payment_format_api_error(?array $data, int $status_code = 0): string
     return 'HitPay API returned an error.';
 }
 
-/**
- * @return list<string>
- */
-function rm_payment_methods(string $environment, string $currency = 'SGD'): array
-{
-    $currency = strtoupper(sanitize_key($currency));
-    $hitpay_currency = function_exists('rm_registration_currency_for_hitpay')
-        ? rm_registration_currency_for_hitpay($currency)
-        : $currency;
-
-    // PayNow is SGD-only; non-SGD checkouts use card.
-    if ($hitpay_currency !== 'SGD') {
-        return ['card'];
-    }
-
-    // HitPay sandbox supports both PayNow and card test payments.
-    return ['paynow_online', 'card'];
-}
-
 function rm_payment_reference_for_pending(int $pending_id, int $event_id): string
 {
     return 'RM-' . max(0, $pending_id) . '-' . max(0, $event_id);
@@ -689,9 +670,11 @@ function rm_payment_create_request(
         rm_page_url()
     );
 
+    // payment_methods is intentionally omitted: HitPay then offers every
+    // method enabled on the account for the given currency, avoiding
+    // "payment method unavailable for your account" rejections.
     $payload = [
         'amount'                  => round($amount, 2),
-        'payment_methods'         => rm_payment_methods($environment, $currency),
         'currency'                => $hitpay_currency,
         'name'                    => $full_name,
         'email'                   => $registrant['email'] ?? '',
