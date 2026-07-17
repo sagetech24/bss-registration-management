@@ -395,17 +395,6 @@ $phone_fixed_class = 'inline-flex items-center rounded-l-lg border border-r-0 bo
             </div>
         </form>
     </div>
-    <p class="text-xs text-slate-500 leading-relaxed px-4 lg:px-0">
-        * By providing your contact details, you consent to our collection, use and disclosure of your personal data as described in our
-        <?php if ($privacy_policy_url !== '') : ?>
-            <a href="<?php echo esc_url($privacy_policy_url); ?>" class="font-medium text-indigo-700 hover:text-indigo-900">
-                privacy policy
-            </a>
-        <?php else : ?>
-            privacy policy
-        <?php endif; ?>
-        on our website. We do strive to limit the amount of personal data we collect to that which is sufficient to support the intended purpose of the collection.
-    </p>
 </div>
 
 <script>

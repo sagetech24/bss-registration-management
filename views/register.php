@@ -110,18 +110,6 @@ $privacy_policy_url = function_exists('get_privacy_policy_url') ? get_privacy_po
                                 <input type="hidden" name="event_promotion_id" value="<?php echo esc_attr((string) (int) $active_promotion['id']); ?>" />
                             <?php endif; ?>
 
-                            <p class="text-xs text-slate-500 leading-relaxed">
-                                * By providing your contact details, you consent to our collection, use and disclosure of your personal data as described in our
-                                <?php if ($privacy_policy_url !== '') : ?>
-                                    <a href="<?php echo esc_url($privacy_policy_url); ?>" class="font-medium text-indigo-700 hover:text-indigo-900">
-                                        privacy policy
-                                    </a>
-                                <?php else : ?>
-                                    privacy policy
-                                <?php endif; ?>
-                                on our website. We do strive to limit the amount of personal data we collect to that which is sufficient to support the intended purpose of the collection.
-                            </p>
-
                             <?php if ($uses_v2) : ?>
                                 <?php
                                 $responses = $members_input[0] ?? rm_form_empty_responses($form_schema);
@@ -154,6 +142,17 @@ $privacy_policy_url = function_exists('get_privacy_policy_url') ? get_privacy_po
                         </form>
                     </div>
                 <?php endif; ?>
+                <p class="text-xs text-slate-500 leading-relaxed mt-4">
+                    * By providing your contact details, you consent to our collection, use and disclosure of your personal data as described in our
+                    <?php if ($privacy_policy_url !== '') : ?>
+                        <a href="<?php echo esc_url($privacy_policy_url); ?>" class="font-medium text-indigo-700 hover:text-indigo-900">
+                            privacy policy
+                        </a>
+                    <?php else : ?>
+                        privacy policy
+                    <?php endif; ?>
+                    on our website. We do strive to limit the amount of personal data we collect to that which is sufficient to support the intended purpose of the collection.
+                </p>
             <?php endif; ?>
         </div>
     <?php endif; ?>
