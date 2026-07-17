@@ -57,8 +57,9 @@ Define these in the parent `wp-config.php`. **Do not commit real values to this 
 | `HITPAY_LIVE_SALT` | Production **API-key salt** (Developers page — for `hmac` in POST body) |
 | `HITPAY_TEST_WEBHOOK_SALT` | Sandbox **webhook-endpoint salt** (Developers → Webhooks → your endpoint — for `Hitpay-Signature` header) |
 | `HITPAY_LIVE_WEBHOOK_SALT` | Production **webhook-endpoint salt** (Developers → Webhooks → your endpoint — for `Hitpay-Signature` header) |
+| `RM_PAYMENT_ENVIRONMENT` | Optional. Force the HitPay environment: `test` or `live`. Defaults to `live` on production (`biblesociety.sg`) and `test` everywhere else. Set to `test` to run the sandbox on production during a testing phase. |
 
-HitPay keys can also be stored as WordPress options (`hitpay_test_key`, `hitpay_live_key`) or environment variables.
+HitPay keys can also be stored as WordPress options (`hitpay_test_key`, `hitpay_live_key`) or environment variables. The environment override can also be a WordPress option (`rm_payment_environment`) or an environment variable.
 
 **Two different salts:** HitPay uses an API-key salt (signs the `hmac` field in payment-request callbacks) and a separate per-webhook salt (signs the raw JSON body in the `Hitpay-Signature` header). Use the salt that matches your webhook format — do not mix them.
 

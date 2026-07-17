@@ -3,7 +3,10 @@
 /**
  * HitPay payment integration for registration-manager.
  * Default: live on production (biblesociety.sg), sandbox elsewhere.
- * Override: apply_filters('rm_payment_environment', $default, $event_id).
+ * Overrides (highest priority first):
+ * - `rm_payment_environment` WP option, `RM_PAYMENT_ENVIRONMENT` env var or
+ *   constant, set to 'test' or 'live' (e.g. force sandbox on production).
+ * - apply_filters('rm_payment_environment', $default, $event_id).
  */
 
 /**
@@ -12,6 +15,18 @@
 function rm_payment_environment(int $event_id = 0): string
 {
     $default = rm_payment_is_production_site() ? 'live' : 'test';
+
+    $override = rm_payment_try_resolve_configured_secret(
+        'rm_payment_environment',
+        'RM_PAYMENT_ENVIRONMENT'
+    );
+    if ($override !== null) {
+        $override = strtolower($override);
+        if ($override === 'live' || $override === 'test') {
+            $default = $override;
+        }
+    }
+
     $environment = apply_filters('rm_payment_environment', $default, $event_id);
 
     return $environment === 'live' ? 'live' : 'test';
@@ -391,11 +406,8 @@ function rm_payment_methods(string $environment, string $currency = 'SGD'): arra
         return ['card'];
     }
 
-    if ($environment === 'live') {
-        return ['paynow_online', 'card'];
-    }
-
-    return ['paynow_online'];
+    // HitPay sandbox supports both PayNow and card test payments.
+    return ['paynow_online', 'card'];
 }
 
 function rm_payment_reference_for_pending(int $pending_id, int $event_id): string
