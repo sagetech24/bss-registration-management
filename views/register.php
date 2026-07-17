@@ -16,6 +16,7 @@ $input_class = 'w-full rounded-lg border border-slate-300 bg-white px-3 py-2 tex
 $form_errors = is_array($form_errors ?? null) ? $form_errors : [];
 $success_message = (string) ($success_message ?? '');
 $order_number = (string) ($order_number ?? '');
+$registration_receipt = is_array($registration_receipt ?? null) ? $registration_receipt : null;
 $error_message = (string) ($error_message ?? '');
 $responses = $members_input[0] ?? rm_form_empty_responses($form_schema);
 $privacy_policy_url = function_exists('get_privacy_policy_url') ? get_privacy_policy_url() : '';
@@ -37,7 +38,9 @@ $privacy_policy_url = function_exists('get_privacy_policy_url') ? get_privacy_po
         </div>
     <?php else : ?>
         <div class="mx-auto w-full">
-            <?php if ($success_message !== '') : ?>
+            <?php if ($registration_receipt !== null) : ?>
+                <?php include __DIR__ . '/partials/registration-receipt.php'; ?>
+            <?php elseif ($success_message !== '') : ?>
                 <div class="bg-white border border-emerald-200 rounded-xl shadow-sm p-6">
                     <div class="p-4 bg-emerald-50 border border-emerald-200 rounded-lg text-emerald-800">
                         <p class="font-medium"><?php echo esc_html($success_message); ?></p>

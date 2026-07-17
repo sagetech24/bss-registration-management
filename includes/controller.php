@@ -51,6 +51,7 @@ function rm_build_register_context(): array
         'form_errors'         => [],
         'success_message'     => '',
         'order_number'        => '',
+        'registration_receipt'=> null,
         'error_message'       => '',
         'individual_href'     => '',
     ];
@@ -136,6 +137,12 @@ function rm_build_register_context(): array
         if ($flash !== null) {
             $context['success_message'] = rm_registration_success_message($flash['status']);
             $context['order_number'] = $flash['order_number'];
+            $context['registration_receipt'] = rm_present_registration_receipt(
+                $flash['order_number'],
+                $flash['status'],
+                $event,
+                $context['event_present']
+            );
         }
 
         return $context;
