@@ -134,7 +134,7 @@ $privacy_policy_url = function_exists('get_privacy_policy_url') ? get_privacy_po
                                 </button>
                                 <a
                                     href="<?php echo esc_url($page_url); ?>"
-                                    class="w-full flex gap-2 items-center sm:w-auto text-sm font-medium text-gray-700 hover:text-gray-900 hover:bg-gray-50 rounded p-3 duration-300 transition"
+                                    class="flex gap-2 items-center text-sm font-medium text-gray-700 hover:text-gray-900 hover:bg-gray-50 rounded p-3 duration-300 transition"
                                 >
                                     <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="size-6">
                                         <path stroke-linecap="round" stroke-linejoin="round" d="M6.75 15.75 3 12m0 0 3.75-3.75M3 12h18" />

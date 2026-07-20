@@ -3,7 +3,7 @@
     <head>
         <meta charset="utf-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1" />
-        <title>Registration Manager</title>
+        <title>Bible Society of Singapore - Registration Management v2</title>
         <meta name="robots" content="noindex,nofollow" />
 
         <script src="https://cdn.tailwindcss.com"></script>
