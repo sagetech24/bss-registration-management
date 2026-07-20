@@ -7,7 +7,7 @@
             <img
                 src="<?php echo esc_url($site_logo); ?>"
                 alt="<?php echo esc_attr(get_bloginfo('name')); ?>"
-                class="w-12 h-12 object-contain shrink-0"
+                class="w-8 h-8 object-contain shrink-0"
             >
         <?php endif; ?>
         <div class="flex flex-col items-start justify-start">
@@ -26,6 +26,10 @@
             </h2>
         </div>
         <?php rm_render_nav_item('events', 'Events', add_query_arg([], $page_url), $active_nav); ?>
+        <?php
+            $migrate_registrant_href = add_query_arg(['action' => 'migrate-registrant'], $page_url);
+            rm_render_nav_item('migrate-registrant', 'Migrate Registrant', $migrate_registrant_href, $active_nav);
+        ?>
         <?php
             // $registrants_href = add_query_arg(['action' => 'get-event-registrants', 'event_code' => ''], $page_url);
             // rm_render_nav_item('registrants', 'Registrants', $registrants_href, $active_nav);

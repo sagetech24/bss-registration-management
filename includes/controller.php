@@ -468,5 +468,9 @@ function rm_build_dashboard_context(): array
         $context = array_merge($context, rm_build_payment_transactions_shell_context());
     }
 
+    if ($view_action === 'migrate-registrant') {
+        $context = array_merge($context, rm_build_migrate_registrant_shell_context($fetch['events']));
+    }
+
     return $context;
 }

@@ -30,14 +30,14 @@ function rm_event_option_options(): array
     return [
         'new'    => 'New Version Events',
         'legacy' => 'Legacy Events',
-        'both'   => 'Both New Version & Legacy',
+        'both'   => 'Both New & Legacy',
     ];
 }
 
 function rm_get_event_option(): string
 {
     $options = rm_event_option_options();
-    $default = 'new';
+    $default = 'both';
 
     if (!isset($_GET['event_option'])) {
         return $default;
@@ -199,6 +199,10 @@ function rm_active_nav(string $view_action): string
 
     if ($view_action === 'payment-transactions') {
         return 'payment-transactions';
+    }
+
+    if ($view_action === 'migrate-registrant') {
+        return 'migrate-registrant';
     }
 
     if ($view_action === 'get-event-profile') {

@@ -36,6 +36,22 @@ if ($view_action === 'registrant-profile') {
     exit;
 }
 
+if ($view_action === 'migrate-registrant-data') {
+    rm_require_login();
+    nocache_headers();
+    header('Content-Type: application/json; charset=utf-8');
+    echo wp_json_encode(rm_build_migrate_registrant_data());
+    exit;
+}
+
+if ($view_action === 'migrate-registrant-execute') {
+    rm_require_login();
+    nocache_headers();
+    header('Content-Type: application/json; charset=utf-8');
+    echo wp_json_encode(rm_execute_migrate_registrant());
+    exit;
+}
+
 $context = rm_build_context();
 
 if (!empty($context['event_not_found'])) {
@@ -66,6 +82,8 @@ if ($context['view_action'] === 'register') {
     }
 } elseif ($context['view_action'] === 'payment-transactions') {
     $view = 'payment-transactions';
+} elseif ($context['view_action'] === 'migrate-registrant') {
+    $view = 'migrate-registrant';
 } else {
     $view = 'events';
 }
