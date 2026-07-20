@@ -141,7 +141,8 @@ function rm_build_register_context(): array
                 $flash['order_number'],
                 $flash['status'],
                 $event,
-                $context['event_present']
+                $context['event_present'],
+                is_array($flash['debug'] ?? null) ? $flash['debug'] : []
             );
         }
 
@@ -249,40 +250,70 @@ function rm_handle_payment_return(): void
     $pending_id = rm_get_pending_id();
     $payment_reference = rm_get_payment_reference();
     $payment_status = rm_get_payment_status();
+    $confirmation = rm_get_payment_confirmation();
 
     if ($event_code === '' || $pending_id < 1) {
         wp_safe_redirect(rm_registration_url(['event_code' => $event_code]));
         exit;
     }
 
-    if (!rm_payment_return_is_completed($payment_status) || $payment_reference === '') {
+    // PayNow QR on a second device often opens redirect_url without HitPay's
+    // status/reference. Resolve the payment request from pending/transient and
+    // treat webhook-finalized registrations as success.
+    $payment_request_id = rm_payment_resolve_return_request_id($pending_id, $payment_reference);
+
+    $debug_return = [
+        'event_code'            => $event_code,
+        'pending_id'            => $pending_id,
+        'query_status'          => $payment_status,
+        'query_reference'       => $payment_reference,
+        'query_confirmation'    => $confirmation,
+        'resolved_request_id'   => $payment_request_id,
+        'get'                   => isset($_GET) && is_array($_GET) ? $_GET : [],
+        'request_uri'           => isset($_SERVER['REQUEST_URI']) ? (string) $_SERVER['REQUEST_URI'] : '',
+    ];
+
+    $result = [
+        'ok'           => false,
+        'order_number' => '',
+        'error'        => '',
+    ];
+
+    if ($payment_request_id !== '') {
+        // Always verify via HitPay / DB — do not require query status.
+        // Bank-app redirects after PayNow frequently omit status/reference.
+        $result = rm_payment_handle_completed($pending_id, $payment_request_id);
+        $debug_return['handle_completed'] = $result;
+    } else {
+        $debug_return['handle_completed'] = null;
+    }
+
+    if (!$result['ok']) {
+        $already_paid = rm_payment_find_finalized_order_for_return($pending_id, $confirmation);
+        $debug_return['already_paid_order'] = $already_paid;
+        if ($already_paid !== '') {
+            $result = [
+                'ok'           => true,
+                'order_number' => $already_paid,
+                'error'        => '',
+            ];
+        }
+    } else {
+        $debug_return['already_paid_order'] = '';
+    }
+
+    if (!$result['ok']) {
         error_log(
-            '[rm_payment] Payment return rejected before verification.'
+            '[rm_payment] Payment return could not confirm success.'
             . ' pending_id=' . $pending_id
             . ' status=' . ($payment_status !== '' ? $payment_status : '(empty)')
             . ' reference=' . ($payment_reference !== '' ? $payment_reference : '(empty)')
+            . ' resolved_request_id=' . ($payment_request_id !== '' ? 'yes' : 'no')
+            . ' confirmation=' . ($confirmation !== '' ? 'yes' : 'no')
+            . ' error=' . ($result['error'] !== '' ? $result['error'] : '(none)')
         );
 
-        $flash_key = rm_store_registration_success_flash('', 'payment_failed');
-        wp_safe_redirect(
-            rm_registration_url([
-                'event_code' => $event_code,
-                'registered' => $flash_key,
-            ])
-        );
-        exit;
-    }
-
-    $result = rm_payment_handle_completed($pending_id, $payment_reference);
-    if (!$result['ok']) {
-        error_log(
-            '[rm_payment] Payment return finalize failed.'
-            . ' pending_id=' . $pending_id
-            . ' reference=' . $payment_reference
-            . ' error=' . $result['error']
-        );
-
-        $flash_key = rm_store_registration_success_flash('', 'payment_failed');
+        $flash_key = rm_store_registration_success_flash('', 'payment_failed', $debug_return);
         wp_safe_redirect(
             rm_registration_url([
                 'event_code' => $event_code,
@@ -311,7 +342,8 @@ function rm_handle_payment_return(): void
 
     $flash_key = rm_store_registration_success_flash(
         $result['order_number'],
-        'confirmed'
+        'confirmed',
+        $debug_return
     );
     wp_safe_redirect(
         rm_registration_url([

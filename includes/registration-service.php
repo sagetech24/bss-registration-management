@@ -613,16 +613,21 @@ function rm_finalize_paid_registration(int $pending_id, string $payment_request_
 }
 
 /**
+ * @param array<string, mixed> $debug Optional payment-return diagnostics (temporary).
  * @return string Flash key for PRG redirect
  */
-function rm_store_registration_success_flash(string $order_number, string $status = 'confirmed'): string
-{
+function rm_store_registration_success_flash(
+    string $order_number,
+    string $status = 'confirmed',
+    array $debug = []
+): string {
     $flash_key = wp_generate_password(12, false);
     set_transient(
         'rm_reg_success_' . $flash_key,
         [
             'order_number' => $order_number,
             'status'       => $status,
+            'debug'        => $debug,
         ],
         5 * MINUTE_IN_SECONDS
     );
@@ -631,7 +636,7 @@ function rm_store_registration_success_flash(string $order_number, string $statu
 }
 
 /**
- * @return array{order_number: string, status: string}|null
+ * @return array{order_number: string, status: string, debug: array<string, mixed>}|null
  */
 function rm_consume_registration_success_flash(string $flash_key): ?array
 {
@@ -649,6 +654,7 @@ function rm_consume_registration_success_flash(string $flash_key): ?array
     return [
         'order_number' => isset($flash['order_number']) ? (string) $flash['order_number'] : '',
         'status'       => isset($flash['status']) ? (string) $flash['status'] : 'confirmed',
+        'debug'        => isset($flash['debug']) && is_array($flash['debug']) ? $flash['debug'] : [],
     ];
 }
 

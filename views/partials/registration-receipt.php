@@ -4,6 +4,17 @@ if ($receipt === null) {
     return;
 }
 
+// TEMP DEBUG — remove after diagnosing PayNow QR second-device return.
+// echo '<pre style="max-width:100%;overflow:auto;background:#111;color:#0f0;padding:1rem;font-size:12px;text-align:left;">';
+// echo "=== registration-receipt.php dump ===\n";
+// echo "--- \$receipt ---\n";
+// var_dump($receipt);
+// echo "\n--- \$_GET (current page) ---\n";
+// var_dump($_GET);
+// echo "\n--- payment return debug (from flash) ---\n";
+// var_dump($receipt['debug'] ?? null);
+// echo '</pre>';
+
 $status = (string) ($receipt['status'] ?? 'confirmed');
 $is_failed = $status === 'payment_failed';
 $title = (string) ($receipt['title'] ?? 'Registration confirmed');
@@ -61,4 +72,3 @@ $render_detail_table = static function (array $rows): void {
         </div>
     </div>
 <?php endif; ?>
-

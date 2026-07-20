@@ -189,13 +189,15 @@ function rm_receipt_person_rows(array $person): array
 /**
  * @param array<string, mixed> $event
  * @param array<string, mixed>|null $event_present
+ * @param array<string, mixed> $debug Temporary payment-return diagnostics.
  * @return array<string, mixed>|null
  */
 function rm_present_registration_receipt(
     string $order_number,
     string $status,
     array $event,
-    ?array $event_present = null
+    ?array $event_present = null,
+    array $debug = []
 ): ?array {
     $event_present = is_array($event_present) ? $event_present : [];
     $program_code = trim((string) ($event_present['program_code'] ?? ($event['programCode'] ?? '')));
@@ -213,6 +215,7 @@ function rm_present_registration_receipt(
             'register_another_href'=> $register_another_href,
             'event_landing_href'   => $event_landing_href,
             'show_event_landing'   => $show_event_landing,
+            'debug'                => $debug,
         ];
     }
 
@@ -250,6 +253,7 @@ function rm_present_registration_receipt(
             'register_another_href' => $register_another_href,
             'event_landing_href'    => $event_landing_href,
             'show_event_landing'    => $show_event_landing,
+            'debug'                 => $debug,
         ];
     }
 
@@ -295,5 +299,6 @@ function rm_present_registration_receipt(
         'register_another_href' => $register_another_href,
         'event_landing_href'    => $event_landing_href,
         'show_event_landing'    => $show_event_landing,
+        'debug'                 => $debug,
     ];
 }
