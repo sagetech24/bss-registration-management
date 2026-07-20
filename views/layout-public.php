@@ -54,7 +54,7 @@
                         </h1>
                         <?php
                         $page_description = is_array($event_present ?? null)
-                            ? trim((string) ($event_present['description'] ?? ''))
+                            ? wp_trim_words(trim((string) ($event_present['description'] ?? '')), 60, '…')
                             : '';
                         ?>
                         <?php if ($page_description !== '') : ?>
@@ -92,6 +92,14 @@
                                         <span class="text-sm"><?php echo esc_html((string) $event_present['venue']); ?></span>
                                     </li>
                                 <?php endif; ?>
+                                <?php if (($event_present['amount_display'] ?? '') !== '') : ?>
+                                    <li class="flex items-start gap-2.5">
+                                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="mt-0.5 size-4 shrink-0 <?php echo $has_banner ? 'text-white' : 'text-slate-700'; ?>" aria-hidden="true">
+                                            <path stroke-linecap="round" stroke-linejoin="round" d="M2.25 18.75a60.07 60.07 0 0 1 15.797 2.101c.727.198 1.453-.342 1.453-1.096V18.75M3.75 4.5v.75A.75.75 0 0 1 3 6h-.75m0 0v-.375c0-.621.504-1.125 1.125-1.125H20.25M2.25 6v9m18-10.5v.75c0 .414.336.75.75.75h.75m-1.5-1.5h.375c.621 0 1.125.504 1.125 1.125v9.75c0 .621-.504 1.125-1.125 1.125h-.375m1.5-1.5H21a.75.75 0 0 0-.75.75v.75m0 0H3.75m0 0h-.375a1.125 1.125 0 0 1-1.125-1.125V15m1.5 1.5v-.75A.75.75 0 0 0 3 15h-.75M15 10.5a3 3 0 1 1-6 0 3 3 0 0 1 6 0Zm3 0h.008v.008H18V10.5Zm-12 0h.008v.008H6V10.5Z" />
+                                        </svg>
+                                        <span class="text-sm"><?php echo esc_html((string) $event_present['amount_display']); ?></span>
+                                    </li>
+                                <?php endif; ?>
                             </ul>
                         <?php endif; ?>
                     </div>
@@ -102,8 +110,13 @@
             </main>
 
             <footer class="mt-auto border-t border-slate-200 bg-white">
-                <div class="mx-auto <?php echo $page_width; ?> px-4 py-4 text-center text-sm text-slate-500">
-                    &copy; <?php echo esc_html((string) current_time('Y')); ?> Bible Society of Singapore
+                <div class="mx-auto <?php echo $page_width; ?> px-4 py-4 text-center gap-2 md:gap-0 text-sm text-slate-500 flex flex-col md:flex-row items-center justify-between">
+                    <p class="text-left text-xs">&copy; <?php echo esc_html((string) current_time('Y')); ?> Bible Society of Singapore</p>
+                    <p class="text-right items-center gap-4">
+                        <a href="<?php echo esc_url(home_url('/privacy-policy')); ?>" class="text-xs text-slate-500 hover:text-blue-700">Privacy Policy</a>
+                        <span class="text-xs">|</span>
+                        <a href="<?php echo esc_url(home_url('/terms-of-service')); ?>" class="text-xs text-slate-500 hover:text-blue-700">Terms of Service</a>
+                    </p>
                 </div>
             </footer>
         </div>
