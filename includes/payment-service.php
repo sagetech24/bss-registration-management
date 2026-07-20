@@ -661,14 +661,18 @@ function rm_payment_create_request(
         ? $confirmation_number
         : rm_payment_reference_for_pending($pending_id, $event_id);
 
-    $redirect_url = add_query_arg(
-        [
-            'action'     => 'payment-return',
-            'event_code' => $event_code,
-            'pending_id' => $pending_id,
-        ],
-        rm_page_url()
-    );
+    // Keep confirmation on the redirect URL so a PayNow QR return from a
+    // second device (often without HitPay's status/reference) can still
+    // resolve a webhook-finalized registration.
+    $redirect_args = [
+        'action'     => 'payment-return',
+        'event_code' => $event_code,
+        'pending_id' => $pending_id,
+    ];
+    if ($confirmation_number !== '') {
+        $redirect_args['confirmation'] = $confirmation_number;
+    }
+    $redirect_url = add_query_arg($redirect_args, rm_page_url());
 
     // payment_methods is intentionally omitted: HitPay then offers every
     // method enabled on the account for the given currency, avoiding
@@ -771,10 +775,13 @@ function rm_payment_store_request_id(int $pending_id, string $request_id): bool
         return false;
     }
 
+    $request_id = sanitize_text_field($request_id);
+    rm_payment_remember_request_id_for_return($pending_id, $request_id);
+
     if (rm_event_registration_tables_exist() && rm_v2_load_pending_header($pending_id) !== null) {
         $updated = $wpdb->update(
             'event_registration_pendings',
-            ['payment_request_id' => sanitize_text_field($request_id)],
+            ['payment_request_id' => $request_id],
             ['id' => $pending_id],
             ['%s'],
             ['%d']
@@ -785,13 +792,131 @@ function rm_payment_store_request_id(int $pending_id, string $request_id): bool
 
     $updated = $wpdb->update(
         'bss_registrant_pendings',
-        ['payment' => sanitize_text_field($request_id)],
+        ['payment' => $request_id],
         ['id' => $pending_id],
         ['%s'],
         ['%d']
     );
 
     return $updated !== false;
+}
+
+/**
+ * Remember payment_request_id across webhook finalize (pending row deleted)
+ * so the browser/bank-app redirect can still verify success.
+ */
+function rm_payment_remember_request_id_for_return(int $pending_id, string $request_id): void
+{
+    $pending_id = absint($pending_id);
+    $request_id = sanitize_text_field(trim($request_id));
+    if ($pending_id < 1 || $request_id === '') {
+        return;
+    }
+
+    set_transient(
+        'rm_pay_return_' . $pending_id,
+        $request_id,
+        3 * DAY_IN_SECONDS
+    );
+}
+
+function rm_payment_recall_request_id_for_return(int $pending_id): string
+{
+    $pending_id = absint($pending_id);
+    if ($pending_id < 1) {
+        return '';
+    }
+
+    $stored = get_transient('rm_pay_return_' . $pending_id);
+
+    return is_string($stored) ? sanitize_text_field($stored) : '';
+}
+
+/**
+ * Resolve HitPay payment request id for the return URL.
+ * Prefer HitPay's ?reference=, then pending row, then return transient.
+ */
+function rm_payment_resolve_return_request_id(int $pending_id, string $query_reference): string
+{
+    $query_reference = sanitize_text_field(trim($query_reference));
+    if ($query_reference !== '') {
+        return $query_reference;
+    }
+
+    $pending = rm_payment_load_pending($pending_id);
+    if ($pending !== null) {
+        $stored = trim((string) ($pending['payment'] ?? ''));
+        if ($stored !== '') {
+            return sanitize_text_field($stored);
+        }
+    }
+
+    return rm_payment_recall_request_id_for_return($pending_id);
+}
+
+/**
+ * @return string Order number when already paid, else empty.
+ */
+function rm_payment_find_finalized_order_by_payment_request(string $payment_request_id): string
+{
+    global $wpdb;
+
+    $payment_request_id = sanitize_text_field(trim($payment_request_id));
+    if ($payment_request_id === '') {
+        return '';
+    }
+
+    if (rm_event_registration_tables_exist()) {
+        $v2_order = $wpdb->get_var(
+            $wpdb->prepare(
+                'SELECT `primary_order_number` FROM `event_registration`
+                 WHERE `payment_request_id` = %s LIMIT 1',
+                $payment_request_id
+            )
+        );
+        if (is_string($v2_order) && $v2_order !== '') {
+            return $v2_order;
+        }
+    }
+
+    $legacy_order = $wpdb->get_var(
+        $wpdb->prepare(
+            'SELECT `orderNumber` FROM `bss_registrant` WHERE `payment` = %s LIMIT 1',
+            $payment_request_id
+        )
+    );
+
+    return is_string($legacy_order) ? $legacy_order : '';
+}
+
+/**
+ * Find an already-finalized order for a payment return without HitPay params.
+ */
+function rm_payment_find_finalized_order_for_return(
+    int $pending_id,
+    string $confirmation = ''
+): string {
+    $confirmation = sanitize_text_field(trim($confirmation));
+    if ($confirmation !== '') {
+        $order = rm_payment_find_finalized_order_by_confirmation($confirmation);
+        if ($order !== '') {
+            return $order;
+        }
+    }
+
+    $request_id = rm_payment_recall_request_id_for_return($pending_id);
+    if ($request_id === '') {
+        $pending = rm_payment_load_pending($pending_id);
+        if ($pending !== null) {
+            $request_id = trim((string) ($pending['payment'] ?? ''));
+        }
+    }
+
+    if ($request_id === '') {
+        return '';
+    }
+
+    return rm_payment_find_finalized_order_by_payment_request($request_id);
 }
 
 /**

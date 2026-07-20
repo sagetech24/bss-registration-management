@@ -231,6 +231,15 @@ function rm_get_payment_reference(): string
     return sanitize_text_field(wp_unslash((string) $_GET['reference']));
 }
 
+function rm_get_payment_confirmation(): string
+{
+    if (!isset($_GET['confirmation'])) {
+        return '';
+    }
+
+    return sanitize_text_field(wp_unslash((string) $_GET['confirmation']));
+}
+
 function rm_get_payment_status(): string
 {
     if (!isset($_GET['status'])) {
