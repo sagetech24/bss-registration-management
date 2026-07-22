@@ -13,6 +13,7 @@ $active_package_count = (int) ($active_package_count ?? 0);
 $event_card = is_array($event_card ?? null) ? $event_card : [];
 $profile_flash = is_array($profile_flash ?? null) ? $profile_flash : null;
 $registration_href = (string) ($registration_href ?? '');
+$event_landing_href = (string) ($event_landing_href ?? '');
 $event_price_display = (string) ($event_price_display ?? 'FREE');
 $profile_error = (string) ($profile_error ?? '');
 $profile_tab = (string) ($profile_tab ?? rm_get_event_profile_tab());
@@ -91,12 +92,14 @@ if (!empty($event_card['categories']) && is_array($event_card['categories'])) {
                     </div>
 
                     <div class="flex flex-wrap gap-2 shrink-0">
-                        <a href="<?php echo esc_url($page_url); ?>" class="inline-flex items-center rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">
-                            Events
-                        </a>
+                        <?php if ($event_landing_href !== '' && $event_landing_href !== home_url('/')) : ?>
+                            <a href="<?php echo esc_url($event_landing_href); ?>" target="_blank" rel="noopener noreferrer" class="inline-flex items-center rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">
+                                Go to event page
+                            </a>
+                        <?php endif; ?>
                         <?php if ($registration_href !== '') : ?>
                             <a href="<?php echo esc_url($registration_href); ?>" target="_blank" rel="noopener noreferrer" class="inline-flex items-center rounded-lg bg-indigo-700 px-3 py-2 text-sm font-medium text-white hover:bg-indigo-800">
-                                Public form
+                                Go to registration form
                             </a>
                         <?php endif; ?>
                     </div>
