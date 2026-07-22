@@ -371,18 +371,31 @@ function rm_build_dashboard_context(): array
     $event_option = rm_get_event_option();
     $page_url = rm_page_url();
 
-    $fetch = rm_fetch_registration_events();
-    $cpt_fetch = rm_fetch_cpt_events();
-    $event_years = rm_merge_event_years($cpt_fetch['events'], $fetch['events']);
-    $event_year = rm_get_event_year($event_years);
-    $event_filter = rm_get_event_filter($event_year);
-    $events = rm_filter_events($fetch['events'], $event_filter, $event_search, $event_year);
-    $cpt_events = rm_filter_events($cpt_fetch['events'], $event_filter, $event_search, $event_year);
+    $skip_events_list = $view_action === 'get-event-profile'
+        && (rm_get_event_id() > 0 || rm_get_event_code() !== '');
 
-    if ($event_option === 'new') {
+    if ($skip_events_list) {
+        $fetch = ['events' => [], 'error' => ''];
+        $cpt_fetch = ['events' => [], 'error' => ''];
+        $event_years = [];
+        $event_year = '';
+        $event_filter = rm_get_event_filter($event_year);
         $events = [];
-    } elseif ($event_option === 'legacy') {
         $cpt_events = [];
+    } else {
+        $fetch = rm_fetch_registration_events();
+        $cpt_fetch = rm_fetch_cpt_events();
+        $event_years = rm_merge_event_years($cpt_fetch['events'], $fetch['events']);
+        $event_year = rm_get_event_year($event_years);
+        $event_filter = rm_get_event_filter($event_year);
+        $events = rm_filter_events($fetch['events'], $event_filter, $event_search, $event_year);
+        $cpt_events = rm_filter_events($cpt_fetch['events'], $event_filter, $event_search, $event_year);
+
+        if ($event_option === 'new') {
+            $events = [];
+        } elseif ($event_option === 'legacy') {
+            $cpt_events = [];
+        }
     }
 
     $context = [

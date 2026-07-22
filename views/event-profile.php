@@ -108,6 +108,7 @@ if (!empty($event_card['categories']) && is_array($event_card['categories'])) {
         </div>
     </div>
 
+    <?php if ($profile_tab !== 'registrants') : ?>
     <div class="grid grid-cols-2 lg:grid-cols-5 gap-3">
         <?php
         $stat_tiles = [
@@ -125,6 +126,7 @@ if (!empty($event_card['categories']) && is_array($event_card['categories'])) {
             </div>
         <?php endforeach; ?>
     </div>
+    <?php endif; ?>
 
     <div class="border-b border-slate-200">
         <nav class="-mb-px flex flex-wrap gap-1" aria-label="Event dashboard tabs">

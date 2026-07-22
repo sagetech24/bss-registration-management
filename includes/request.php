@@ -288,6 +288,20 @@ function rm_get_payment_transactions_page(): int
     return max(1, absint(wp_unslash((string) $_GET['tx_page'])));
 }
 
+function rm_registrants_per_page(): int
+{
+    return 25;
+}
+
+function rm_get_registrants_page(): int
+{
+    if (!isset($_GET['reg_page'])) {
+        return 1;
+    }
+
+    return max(1, absint(wp_unslash((string) $_GET['reg_page'])));
+}
+
 function rm_get_registrant_payment_request_id(): string
 {
     if (!isset($_GET['payment_request_id'])) {

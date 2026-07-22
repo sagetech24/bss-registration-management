@@ -465,7 +465,8 @@ function rm_build_event_profile_context(array $events_by_year, string $requested
         'total_revenue' => 0.0,
     ];
     $package_summary = [];
-    if ($event_id > 0) {
+    $profile_tab = rm_get_event_profile_tab();
+    if ($event_id > 0 && $profile_tab !== 'registrants') {
         $db_fetch = rm_fetch_registrants_from_db($event_id, $selected_event);
         if ($db_fetch['error'] === '') {
             $table_registrants = rm_registrants_exclude_addons($db_fetch['registrants']);
@@ -506,8 +507,6 @@ function rm_build_event_profile_context(array $events_by_year, string $requested
         : (float) ($selected_event['price'] ?? 0);
     $event_currency = rm_registration_currency($selected_event);
     $price_display = rm_format_currency($price_num, $event_currency);
-
-    $profile_tab = rm_get_event_profile_tab();
 
     return [
         'selected_event'              => $selected_event,
