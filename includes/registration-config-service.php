@@ -659,9 +659,15 @@ function rm_normalize_registration_settings_input(array $input, array $existing_
         ? $existing['guests']
         : rm_registration_config_defaults()['guests'];
 
-    $guests_enabled = isset($input['guests_enabled'])
-        ? !empty($input['guests_enabled'])
-        : !empty($existing_guests['enabled']);
+    $guests_enabled_raw = $input['guests_enabled'] ?? null;
+    if ($guests_enabled_raw === null) {
+        $guests_enabled = !empty($existing_guests['enabled']);
+    } else {
+        $guests_enabled = $guests_enabled_raw === true
+            || $guests_enabled_raw === 1
+            || $guests_enabled_raw === '1'
+            || $guests_enabled_raw === 'true';
+    }
 
     $guest_label_singular = isset($input['guest_label_singular'])
         ? sanitize_text_field((string) $input['guest_label_singular'])

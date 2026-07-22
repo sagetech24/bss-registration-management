@@ -161,8 +161,8 @@ document.addEventListener('alpine:init', () => {
                 <fieldset class="rounded-lg border border-rose-200 p-4 space-y-4">
                     <legend class="text-sm font-medium text-rose-700 px-1">Accept Guests</legend>
                     <label class="flex items-start gap-3">
-                        <input type="hidden" name="guests_enabled" value="" />
-                        <input type="checkbox" name="guests_enabled" value="1" class="mt-1 rounded border-slate-300 text-indigo-700 focus:ring-indigo-600" x-model="guestsEnabled" <?php checked($guests_enabled); ?> />
+                        <input type="hidden" name="guests_enabled" :value="guestsEnabled ? '1' : ''" />
+                        <input type="checkbox" class="mt-1 rounded border-slate-300 text-indigo-700 focus:ring-indigo-600" x-model="guestsEnabled" />
                         <span>
                             <span class="block text-sm font-medium text-slate-800">Enable guest registration</span>
                             <span class="block text-xs text-slate-500 mt-0.5">Let registrants add guests (kids, relatives, etc.) with a separate form and price.</span>
