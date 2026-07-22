@@ -263,7 +263,7 @@ document.addEventListener('alpine:init', () => {
                                     <span class="inline-flex rounded-full border border-slate-300 bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-600">Inactive</span>
                                 <?php endif; ?>
                                 <div class="mt-1 text-[11px] text-slate-400 flex flex-col">
-                                    <span class="">Start: <?php echo 'Start:' .  esc_html((string) ($promo['valid_from_display'] ?? '—')); ?></span>
+                                    <span class="">Start: <?php echo esc_html((string) ($promo['valid_from_display'] ?? '—')); ?></span>
                                     <span class="">End: <?php echo esc_html((string) ($promo['valid_until_display'] ?? '—')); ?></span>
                                 </div>
                             </td>
