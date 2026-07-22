@@ -57,8 +57,9 @@ function rm_present_event_card(array $event, string $page_url): array
     $source = rm_event_source_value($event);
 
     $registrants_args = rm_args_with_event_source([
-        'action'     => 'get-event-registrants',
+        'action'     => 'get-event-profile',
         'event_code' => $program_code,
+        'tab'        => 'registrants',
     ], $source);
     if ($event_id > 0) {
         $registrants_args['event_id'] = $event_id;
