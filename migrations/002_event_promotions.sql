@@ -11,6 +11,7 @@ CREATE TABLE IF NOT EXISTS `event_promotions` (
     `member_max` TINYINT UNSIGNED NOT NULL DEFAULT 1,
     `require_all_members` TINYINT(1) NOT NULL DEFAULT 0,
     `package_price` DECIMAL(10,2) NOT NULL DEFAULT 0.00,
+    `compare_at_price` DECIMAL(10,2) NULL DEFAULT NULL,
     `pricing_config` JSON NULL,
     `valid_from` DATETIME NULL DEFAULT NULL,
     `valid_until` DATETIME NULL DEFAULT NULL,

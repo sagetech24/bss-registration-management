@@ -30,7 +30,7 @@ Event registration and payment module for Bible Society Singapore (BSS). Runs as
 php -r "require 'registration-v2/bootstrap.php'; print_r(rm_install_event_registration_tables());"
 ```
 
-Or apply `migrations/001_event_registration_tables.sql` and `migrations/002_event_promotions.sql` directly in MySQL.
+Or apply `migrations/001_event_registration_tables.sql`, `migrations/002_event_promotions.sql`, and `migrations/003_event_promotions_compare_at_price.sql` directly in MySQL.
 
 ```
 wordpress-root/
@@ -164,6 +164,7 @@ Named packages (Couple, Company, etc.) are stored in `event_promotions` and sele
 | `member_min` / `member_max` | Group size rules |
 | `require_all_members` | `1` = all slots required at checkout; `0` = fill-later |
 | `package_price` | Fixed package price (authoritative when package is used) |
+| `compare_at_price` | Optional list/was price for public strike-through display |
 | `pricing_config` | JSON slots for `group_per_head` |
 
 Example insert:

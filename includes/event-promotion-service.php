@@ -135,6 +135,9 @@ function rm_normalize_event_promotion_row(array $row): array
         'member_max'          => $member_max,
         'require_all_members' => !empty($row['require_all_members']),
         'package_price'       => isset($row['package_price']) ? (float) $row['package_price'] : 0.0,
+        'compare_at_price'    => isset($row['compare_at_price']) && $row['compare_at_price'] !== null && $row['compare_at_price'] !== ''
+            ? (float) $row['compare_at_price']
+            : null,
         'pricing_config'      => $pricing_config,
         'valid_from'          => $row['valid_from'] ?? null,
         'valid_until'         => $row['valid_until'] ?? null,
@@ -303,15 +306,22 @@ function rm_present_event_promotion(array $promotion, ?array $event = null): arr
     $promo_currency = (string) ($promotion['_currency'] ?? 'SGD');
     $price_display = rm_format_currency($price, $promo_currency);
 
-    // "Original" price is the normal registration base price without the selected
-    // package promotion (e.g., early-bird / event default).
+    // Prefer package compare-at (display-only). Fall back to event registration
+    // base price when compare-at is not set.
     $original_price_display = '';
-    if ($event !== null) {
+    $compare_at = $promotion['compare_at_price'] ?? null;
+    $compare_at_price = null;
+    if ($compare_at !== null && $compare_at !== '' && is_numeric($compare_at)) {
+        $compare_at_price = (float) $compare_at;
+        if ($compare_at_price > $price) {
+            $original_price_display = rm_format_currency($compare_at_price, $promo_currency);
+        }
+    } elseif ($event !== null) {
         $base = rm_pricing_base_price($event);
-        $original_price_display = rm_format_currency(
-            (float) ($base['base_price'] ?? 0),
-            $promo_currency
-        );
+        $event_base = (float) ($base['base_price'] ?? 0);
+        if ($event_base > $price) {
+            $original_price_display = rm_format_currency($event_base, $promo_currency);
+        }
     }
 
     $member_rule = '';
@@ -340,6 +350,7 @@ function rm_present_event_promotion(array $promotion, ?array $event = null): arr
         'original_price_display' => $original_price_display,
         'price_display'       => $price_display,
         'package_price'       => $price,
+        'compare_at_price'    => $compare_at_price,
         'member_rule'         => $member_rule,
         'member_min'          => $limits['min'],
         'member_max'          => $limits['max'],
@@ -409,6 +420,26 @@ function rm_normalize_event_promotion_input(array $input, int $event_id): array
         ];
     }
 
+    $compare_at_raw = $input['compare_at_price'] ?? null;
+    $compare_at_price = null;
+    if ($compare_at_raw !== null && $compare_at_raw !== '') {
+        if (!is_numeric($compare_at_raw)) {
+            return [
+                'ok'    => false,
+                'error' => 'Compare-at price must be a number.',
+                'data'  => [],
+            ];
+        }
+        $compare_at_price = (float) $compare_at_raw;
+        if ($compare_at_price < 0) {
+            return [
+                'ok'    => false,
+                'error' => 'Compare-at price cannot be negative.',
+                'data'  => [],
+            ];
+        }
+    }
+
     $valid_from = rm_normalize_promotion_datetime($input['valid_from'] ?? null);
     $valid_until = rm_normalize_promotion_datetime($input['valid_until'] ?? null);
     if ($valid_from === false || $valid_until === false) {
@@ -434,6 +465,7 @@ function rm_normalize_event_promotion_input(array $input, int $event_id): array
             'member_max'          => $member_max,
             'require_all_members' => !empty($input['require_all_members']) ? 1 : 0,
             'package_price'       => $package_price,
+            'compare_at_price'    => $compare_at_price,
             'pricing_config'      => null,
             'valid_from'          => $valid_from,
             'valid_until'         => $valid_until,
@@ -503,7 +535,7 @@ function rm_create_event_promotion(int $event_id, array $input): array
         ];
     }
 
-    foreach (['pricing_config', 'valid_from', 'valid_until', 'description'] as $nullable_key) {
+    foreach (['pricing_config', 'valid_from', 'valid_until', 'description', 'compare_at_price'] as $nullable_key) {
         if (!array_key_exists($nullable_key, $data)) {
             continue;
         }
@@ -568,7 +600,7 @@ function rm_update_event_promotion(int $promotion_id, int $event_id, array $inpu
         ? wp_json_encode($existing_pricing)
         : null;
 
-    foreach (['pricing_config', 'valid_from', 'valid_until', 'description'] as $nullable_key) {
+    foreach (['pricing_config', 'valid_from', 'valid_until', 'description', 'compare_at_price'] as $nullable_key) {
         if (!array_key_exists($nullable_key, $data)) {
             continue;
         }

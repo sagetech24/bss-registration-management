@@ -88,6 +88,7 @@ function rm_install_event_promotions_schema(): array
             `member_max` TINYINT UNSIGNED NOT NULL DEFAULT 1,
             `require_all_members` TINYINT(1) NOT NULL DEFAULT 0,
             `package_price` DECIMAL(10,2) NOT NULL DEFAULT 0.00,
+            `compare_at_price` DECIMAL(10,2) NULL DEFAULT NULL,
             `pricing_config` JSON NULL,
             `valid_from` DATETIME NULL DEFAULT NULL,
             `valid_until` DATETIME NULL DEFAULT NULL,
@@ -110,6 +111,25 @@ function rm_install_event_promotions_schema(): array
         }
 
         $created[] = 'event_promotions';
+    }
+
+    if (rm_schema_table_exists('event_promotions')
+        && !rm_schema_column_exists('event_promotions', 'compare_at_price')
+    ) {
+        $alter_compare = $wpdb->query(
+            'ALTER TABLE `event_promotions`
+             ADD COLUMN `compare_at_price` DECIMAL(10,2) NULL DEFAULT NULL AFTER `package_price`'
+        );
+        if ($alter_compare === false) {
+            return [
+                'ok'      => false,
+                'error'   => $wpdb->last_error !== ''
+                    ? $wpdb->last_error
+                    : 'Failed to add compare_at_price to event_promotions.',
+                'created' => $created,
+            ];
+        }
+        $created[] = 'event_promotions.compare_at_price';
     }
 
     foreach (['event_registration', 'event_registration_pendings'] as $table) {
@@ -235,6 +255,10 @@ function rm_event_registration_tables_exist(): bool
 function rm_event_promotions_schema_ready(): bool
 {
     if (!rm_schema_table_exists('event_promotions')) {
+        return false;
+    }
+
+    if (!rm_schema_column_exists('event_promotions', 'compare_at_price')) {
         return false;
     }
 

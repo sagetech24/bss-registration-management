@@ -69,9 +69,11 @@ $privacy_policy_url = function_exists('get_privacy_policy_url') ? get_privacy_po
                             </span>
                         <?php endif; ?>
                         <p class="mt-1 text-sm text-slate-700">
-                            <span class="text-red-500 text-lg line-through">
-                                <?php echo esc_html($promotion_present['original_price_display']); ?>
-                            </span>
+                            <?php if (($promotion_present['original_price_display'] ?? '') !== '') : ?>
+                                <span class="text-red-500 text-lg line-through">
+                                    <?php echo esc_html($promotion_present['original_price_display']); ?>
+                                </span>
+                            <?php endif; ?>
                             <span class="text-slate-800 text-lg font-semibold">
                                 <?php echo esc_html($promotion_present['price_display']); ?>
                             </span>
