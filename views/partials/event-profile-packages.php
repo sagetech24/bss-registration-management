@@ -18,6 +18,9 @@ foreach ($promotions as $promo) {
         'member_max'          => (int) ($promo['member_max'] ?? 1),
         'require_all_members' => !empty($promo['require_all_members']),
         'package_price'       => (float) ($promo['package_price'] ?? 0),
+        'compare_at_price'    => isset($promo['compare_at_price']) && $promo['compare_at_price'] !== null
+            ? (float) $promo['compare_at_price']
+            : '',
         'is_active'           => !empty($promo['is_active']),
         'sort_order'          => (int) ($promo['sort_order'] ?? 0),
         'valid_from_local'    => (string) ($promo['valid_from_local'] ?? ''),
@@ -52,6 +55,7 @@ document.addEventListener('alpine:init', () => {
             member_max: 2,
             require_all_members: true,
             package_price: 0,
+            compare_at_price: '',
             is_active: true,
             sort_order: 0,
             valid_from_local: '',
@@ -68,6 +72,7 @@ document.addEventListener('alpine:init', () => {
                 member_max: 2,
                 require_all_members: true,
                 package_price: 0,
+                compare_at_price: '',
                 is_active: true,
                 sort_order: 0,
                 valid_from_local: '',
@@ -99,6 +104,9 @@ document.addEventListener('alpine:init', () => {
                 member_max: promo.member_max || 1,
                 require_all_members: !!promo.require_all_members,
                 package_price: promo.package_price || 0,
+                compare_at_price: (promo.compare_at_price !== null && promo.compare_at_price !== '')
+                    ? promo.compare_at_price
+                    : '',
                 is_active: !!promo.is_active,
                 sort_order: promo.sort_order || 0,
                 valid_from_local: promo.valid_from_local || '',
@@ -215,21 +223,39 @@ document.addEventListener('alpine:init', () => {
                         } ?>
                         <tr class="align-top">
                             <td class="px-4 py-3">
-                                <div class="font-medium text-slate-900"><?php echo esc_html((string) ($promo['title'] ?? '')); ?></div>
-                                <!-- <div class="text-xs text-slate-500 mt-0.5">slug: <?php //echo esc_html((string) ($promo['slug'] ?? '')); ?></div> -->
                                 <?php if (!empty($promo['package_href'])) : ?>
-                                    <button
-                                        type="button"
-                                        class="mt-1 text-[10px] bg-indigo-50 text-indigo-700 hover:text-indigo-900 rounded-md px-2 py-1 inline-flex items-center gap-1"
-                                        @click="copyPromoUrl(<?php echo (int) ($promo['id'] ?? 0); ?>)"
-                                        x-text="copiedPromoId === <?php echo (int) ($promo['id'] ?? 0); ?> ? 'Copied!' : 'Copy URL'"
+                                    <a
+                                        href="<?php echo esc_url((string) $promo['package_href']); ?>"
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        class="font-medium text-indigo-700 hover:text-indigo-900 hover:underline"
                                     >
-                                </button>
+                                        <?php echo esc_html((string) ($promo['title'] ?? '')); ?>
+                                    </a>
+                                    <?php if (!empty($promo['package_href'])) : ?>
+                                        <div class="mt-1">
+                                            <button
+                                                type="button"
+                                                class="text-[9px] bg-indigo-50 text-indigo-700 hover:text-indigo-900 rounded-md px-1.5 py-0.5 inline-flex items-center gap-1"
+                                                @click="copyPromoUrl(<?php echo (int) ($promo['id'] ?? 0); ?>)"
+                                                x-text="copiedPromoId === <?php echo (int) ($promo['id'] ?? 0); ?> ? 'Copied!' : 'Copy URL'"
+                                            >
+                                            </button>
+                                        </div>
+                                    <?php endif; ?>
+                                <?php else : ?>
+                                    <div class="font-medium text-slate-900"><?php echo esc_html((string) ($promo['title'] ?? '')); ?></div>
                                 <?php endif; ?>
+                                <!-- <div class="text-xs text-slate-500 mt-0.5">slug: <?php //echo esc_html((string) ($promo['slug'] ?? '')); ?></div> -->
                             </td>
                             <td class="px-4 py-3 text-slate-700"><?php echo esc_html((string) ($promo['registration_mode_label'] ?? $promo['registration_mode'] ?? '')); ?></td>
                             <td class="px-4 py-3 text-slate-700"><?php echo esc_html((string) ($promo['member_rule'] ?? '')); ?></td>
-                            <td class="px-4 py-3 text-slate-900 font-medium"><?php echo esc_html((string) ($promo['price_display'] ?? '')); ?></td>
+                            <td class="px-4 py-3 text-slate-900 font-medium">
+                                <?php if (!empty($promo['original_price_display'])) : ?>
+                                    <span class="mr-1 text-slate-400 line-through font-normal"><?php echo esc_html((string) $promo['original_price_display']); ?></span>
+                                <?php endif; ?>
+                                <?php echo esc_html((string) ($promo['price_display'] ?? '')); ?>
+                            </td>
                             <td class="px-4 py-3">
                                 <?php if (!empty($promo['is_active'])) : ?>
                                     <span class="inline-flex rounded-full border border-emerald-500 bg-emerald-100 px-2 py-0.5 text-xs font-medium text-emerald-700">Active</span>
@@ -312,15 +338,24 @@ document.addEventListener('alpine:init', () => {
                         <input type="number" min="1" name="member_max" x-model="form.member_max" :readonly="form.registration_mode === 'individual'" :class="form.registration_mode === 'individual' ? 'bg-slate-50 text-slate-500' : 'bg-white'" class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none" />
                     </div>
                 </div>
-                <div class="grid grid-cols-2 gap-3">
-                    <div>
+                <div class="grid grid-cols-8 gap-3">
+                    <div class="col-span-3">
+                        <label class="block text-sm font-medium text-slate-700 mb-1.5">Original price</label>
+                        <div class="flex">
+                            <span class="inline-flex items-center rounded-l-lg border border-r-0 border-slate-300 bg-slate-50 px-3 text-sm text-slate-500"><?php echo esc_html((string) ($event_currency ?? 'SGD')); ?></span>
+                            <input type="number" min="0" step="0.01" name="compare_at_price" x-model="form.compare_at_price" placeholder="Optional" class="w-full rounded-r-lg rounded-l-none border border-slate-300 px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none" />
+                        </div>
+                        <p class="mt-1 text-[11px] text-slate-500">Original price of the package.</p>
+                    </div>
+                    <div class="col-span-3">
                         <label class="block text-sm font-medium text-slate-700 mb-1.5">Package price</label>
                         <div class="flex">
                             <span class="inline-flex items-center rounded-l-lg border border-r-0 border-slate-300 bg-slate-50 px-3 text-sm text-slate-500"><?php echo esc_html((string) ($event_currency ?? 'SGD')); ?></span>
                             <input type="number" min="0" step="0.01" name="package_price" x-model="form.package_price" class="w-full rounded-r-lg rounded-l-none border border-slate-300 px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none" />
                         </div>
+                        <p class="mt-1 text-[11px] text-slate-500">Price charged at checkout.</p>
                     </div>
-                    <div>
+                    <div class="col-span-2">
                         <label class="block text-sm font-medium text-slate-700 mb-1.5">Sort order</label>
                         <input type="number" min="0" name="sort_order" x-model="form.sort_order" class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none" />
                     </div>
