@@ -38,6 +38,17 @@ document.addEventListener('alpine:init', () => {
         guestsModalTitle: '',
         guestsModalPrimary: '',
         guestsModalRows: [],
+        actionMenuId: null,
+        pagination: {
+            current_page: 1,
+            total_pages: 1,
+            per_page: 25,
+            total: 0,
+            has_prev: false,
+            has_next: false,
+            from: 0,
+            to: 0,
+        },
         apiUrl: <?php echo wp_json_encode($registrants_config['apiUrl']); ?>,
         paymentDetailsUrl: <?php echo wp_json_encode($registrants_config['paymentDetailsUrl']); ?>,
         profileUrl: <?php echo wp_json_encode($registrants_config['profileUrl']); ?>,
@@ -51,11 +62,31 @@ document.addEventListener('alpine:init', () => {
                 return;
             }
 
-            await this.load();
+            const params = new URLSearchParams(window.location.search);
+            const page = Math.max(1, parseInt(params.get('reg_page') || '1', 10) || 1);
+            await this.load(page);
         },
-        async load() {
+        rowActionId(row) {
+            return String(row.registrant_id || row.order_number || '');
+        },
+        toggleActionMenu(row) {
+            const id = this.rowActionId(row);
+            this.actionMenuId = this.actionMenuId === id ? null : id;
+        },
+        closeActionMenu() {
+            this.actionMenuId = null;
+        },
+        isActionMenuOpen(row) {
+            return this.actionMenuId === this.rowActionId(row);
+        },
+        async load(page = null) {
+            if (page !== null) {
+                this.pagination.current_page = page;
+            }
+
             this.loading = true;
             this.error = '';
+            this.closeActionMenu();
 
             try {
                 const url = new URL(this.apiUrl, window.location.origin);
@@ -64,6 +95,7 @@ document.addEventListener('alpine:init', () => {
                 } else {
                     url.searchParams.delete('package_filter');
                 }
+                url.searchParams.set('reg_page', String(this.pagination.current_page || 1));
 
                 const response = await fetch(url.toString(), {
                     credentials: 'same-origin',
@@ -86,9 +118,14 @@ document.addEventListener('alpine:init', () => {
                 this.summary = data.registrants_summary || this.summary;
                 this.packageSummary = data.package_summary || [];
                 this.packageOptions = data.package_options || this.packageOptions;
+                this.pagination = data.pagination || this.pagination;
                 if (data.package_filter) {
                     this.packageFilter = data.package_filter;
                 }
+
+                const pageUrl = new URL(window.location.href);
+                pageUrl.searchParams.set('reg_page', String(this.pagination.current_page || 1));
+                window.history.replaceState({}, '', pageUrl.toString());
             } catch (e) {
                 this.error = 'Failed to load registrants.';
                 this.rows = [];
@@ -96,8 +133,16 @@ document.addEventListener('alpine:init', () => {
                 this.loading = false;
             }
         },
+        goToPage(page) {
+            if (this.loading || page < 1 || page > this.pagination.total_pages) {
+                return;
+            }
+
+            this.load(page);
+        },
         async applyPackageFilter() {
-            await this.load();
+            this.pagination.current_page = 1;
+            await this.load(1);
         },
         async openPaymentDetails(row) {
             if (!row?.has_payment || !row.payment_request_id) {
@@ -204,6 +249,7 @@ document.addEventListener('alpine:init', () => {
             this.closeModal();
             this.closeProfileModal();
             this.closeGuestsModal();
+            this.closeActionMenu();
         },
         formatCount(value) {
             return Number(value || 0).toLocaleString();
@@ -367,12 +413,11 @@ document.addEventListener('alpine:init', () => {
                                 <th scope="col" class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-slate-600">Order number</th>
                                 <th scope="col" class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-slate-600">Registrant</th>
                                 <th scope="col" class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-slate-600">Package</th>
+                                <th scope="col" x-show="!eventIsFree" class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-slate-600">Amount</th>
                                 <th scope="col" x-show="!eventIsFree" class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-slate-600">Payment Method</th>
                                 <th scope="col" x-show="!eventIsFree" class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-slate-600">Status</th>
-                                <th scope="col" x-show="!eventIsFree" class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-slate-600">Amount</th>
                                 <th scope="col" class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-slate-600">Email sent</th>
-                                <th scope="col" class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-slate-600">Registered</th>
-                                <th scope="col" class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-slate-600">Actions</th>
+                                <th scope="col" colspan="2" class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-slate-600">Registered</th>
                             </tr>
                         </thead>
                         <tbody class="divide-y divide-slate-100 bg-white">
@@ -415,20 +460,26 @@ document.addEventListener('alpine:init', () => {
                                             ></button>
                                         </div>
                                     </td>
+                                    <td x-show="!eventIsFree" class="whitespace-nowrap px-4 py-3 text-xs text-slate-700" x-text="row.charge_amount_display || row.amount_display"></td>
                                     <td x-show="!eventIsFree" class="px-4 py-3 text-xs text-slate-700">
                                         <div class="flex items-center gap-2">
                                             <img
-                                                x-show="row.charge_payment_method_logo"
-                                                :src="row.charge_payment_method_logo"
-                                                :alt="row.charge_payment_method || 'Payment method'"
+                                                x-show="row.charge_payment_method_logo || row.payment_method_logo"
+                                                :src="row.charge_payment_method_logo || row.payment_method_logo"
+                                                :alt="row.charge_payment_method || row.payment_method || 'Payment method'"
                                                 class="h-6 w-16 object-cover"
                                             >
+                                            <span
+                                                x-show="!row.charge_payment_method_logo && !row.payment_method_logo && (row.charge_payment_method || row.payment_method)"
+                                                class="text-slate-700 border border-purple-200 bg-purple-50 text-purple-800 rounded-full px-2.5 py-1 text-xs font-semibold"
+                                                x-text="row.charge_payment_method || row.payment_method"
+                                            ></span>
                                         </div>
-                                        <p
+                                        <!-- <p
                                             class="mt-0.5 text-[10px] truncate max-w-[10rem] font-mono text-slate-500"
                                             x-show="row.payment_request_id"
                                             x-text="row.payment_request_id || 'N/A'"
-                                        ></p>
+                                        ></p> -->
                                     </td>
                                     <td x-show="!eventIsFree" class="whitespace-nowrap px-4 py-3 text-xs">
                                         <span
@@ -437,7 +488,6 @@ document.addEventListener('alpine:init', () => {
                                             x-text="row.payment_status"
                                         ></span>
                                     </td>
-                                    <td x-show="!eventIsFree" class="whitespace-nowrap px-4 py-3 text-xs text-slate-700" x-text="row.charge_amount_display"></td>
                                     <td class="whitespace-nowrap px-4 py-3 text-xs">
                                         <span
                                             class="inline-flex rounded-full px-2.5 py-1 text-xs font-semibold"
@@ -445,33 +495,106 @@ document.addEventListener('alpine:init', () => {
                                             x-text="row.email_sent_label"
                                         ></span>
                                     </td>
-                                    <td class="whitespace-nowrap px-4 py-3 text-xs text-slate-600" x-text="row.date_display"></td>
-                                    <td class="whitespace-nowrap px-4 py-3 text-xs">
-                                        <button
-                                            x-show="eventIsFree"
-                                            type="button"
-                                            class="rounded-lg border border-indigo-200 bg-indigo-50 px-3 py-1.5 text-xs font-medium text-indigo-700 transition hover:bg-indigo-100"
-                                            @click="openProfile(row)"
-                                        >
-                                            View Profile
-                                        </button>
-                                        <button
-                                            x-show="!eventIsFree"
-                                            type="button"
-                                            class="rounded-full border px-2 py-1 text-[11px] transition"
-                                            :class="row.has_payment
-                                                ? 'border-indigo-200 bg-indigo-50 text-indigo-700 hover:bg-indigo-100'
-                                                : 'border-slate-200 bg-slate-50 text-slate-400 cursor-not-allowed'"
-                                            :disabled="!row.has_payment"
-                                            @click="openPaymentDetails(row)"
-                                        >
-                                            Payment Details
-                                        </button>
+                                    <td class="whitespace-nowrap px-4 py-3 text-xs text-slate-600">
+                                        <p class="font-medium text-slate-700" x-text="row.date_display_date || row.date_display"></p>
+                                        <p
+                                            class="mt-0.5 text-[11px] text-slate-500"
+                                            x-show="row.date_display_time"
+                                            x-text="row.date_display_time"
+                                        ></p>
+                                    </td>
+                                    <td class="whitespace-nowrap px-4 py-3 text-xs text-right">
+                                        <div class="relative inline-block text-left" @click.outside="closeActionMenu()">
+                                            <button
+                                                type="button"
+                                                class="inline-flex items-center justify-center rounded-lg p-1.5 text-slate-500 transition hover:bg-slate-100 hover:text-slate-700"
+                                                @click.stop="toggleActionMenu(row)"
+                                                aria-label="Row actions"
+                                                :aria-expanded="isActionMenuOpen(row)"
+                                            >
+                                                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" class="size-5">
+                                                    <path d="M10 3a1.5 1.5 0 1 1 0 3 1.5 1.5 0 0 1 0-3ZM10 8.5a1.5 1.5 0 1 1 0 3 1.5 1.5 0 0 1 0-3ZM10 14a1.5 1.5 0 1 1 0 3 1.5 1.5 0 0 1 0-3Z" />
+                                                </svg>
+                                            </button>
+                                            <div
+                                                x-show="isActionMenuOpen(row)"
+                                                x-cloak
+                                                x-transition
+                                                class="absolute right-0 z-20 mt-1 w-44 origin-top-right rounded-lg border border-slate-200 bg-white py-1 shadow-lg"
+                                                @click.stop
+                                                style="display: none;"
+                                            >
+                                                <button
+                                                    type="button"
+                                                    class="flex w-full items-center px-3 py-2 text-left text-xs text-slate-700 transition hover:bg-slate-50"
+                                                    @click="openProfile(row); closeActionMenu()"
+                                                >
+                                                    View Profile
+                                                </button>
+                                                <button
+                                                    x-show="row.guest_count > 0"
+                                                    type="button"
+                                                    class="flex w-full items-center px-3 py-2 text-left text-xs text-slate-700 transition hover:bg-slate-50"
+                                                    @click="openGuestsModal(row); closeActionMenu()"
+                                                >
+                                                    <span x-text="row.guest_button_label || 'View Guests'"></span>
+                                                </button>
+                                                <button
+                                                    x-show="!eventIsFree && row.has_payment"
+                                                    type="button"
+                                                    class="flex w-full items-center px-3 py-2 text-left text-xs text-slate-700 transition hover:bg-slate-50"
+                                                    @click="openPaymentDetails(row); closeActionMenu()"
+                                                >
+                                                    Payment Details
+                                                </button>
+                                            </div>
+                                        </div>
                                     </td>
                                 </tr>
                             </template>
                         </tbody>
                     </table>
+                </div>
+
+                <div
+                    x-show="pagination.total_pages > 1"
+                    x-cloak
+                    class="flex flex-col gap-3 border-t border-slate-200 px-4 py-3 sm:flex-row sm:items-center sm:justify-between"
+                    style="display: none;"
+                >
+                    <p class="text-xs text-slate-500">
+                        Showing
+                        <span class="font-semibold text-slate-900" x-text="pagination.from"></span>
+                        to
+                        <span class="font-semibold text-slate-900" x-text="pagination.to"></span>
+                        of
+                        <span class="font-semibold text-slate-900" x-text="formatCount(pagination.total)"></span>
+                        registrants
+                    </p>
+                    <div class="flex items-center gap-2">
+                        <button
+                            type="button"
+                            class="rounded-lg border px-3 py-1.5 text-xs font-medium transition"
+                            :class="pagination.has_prev && !loading ? 'border-slate-300 bg-white text-slate-700 hover:bg-slate-50' : 'border-slate-200 bg-slate-50 text-slate-400 cursor-not-allowed'"
+                            :disabled="!pagination.has_prev || loading"
+                            @click="goToPage(pagination.current_page - 1)"
+                        >
+                            Previous
+                        </button>
+                        <span class="text-xs text-slate-600">
+                            Page <span x-text="pagination.current_page"></span>
+                            of <span x-text="pagination.total_pages"></span>
+                        </span>
+                        <button
+                            type="button"
+                            class="rounded-lg border px-3 py-1.5 text-xs font-medium transition"
+                            :class="pagination.has_next && !loading ? 'border-slate-300 bg-white text-slate-700 hover:bg-slate-50' : 'border-slate-200 bg-slate-50 text-slate-400 cursor-not-allowed'"
+                            :disabled="!pagination.has_next || loading"
+                            @click="goToPage(pagination.current_page + 1)"
+                        >
+                            Next
+                        </button>
+                    </div>
                 </div>
             </div>
 

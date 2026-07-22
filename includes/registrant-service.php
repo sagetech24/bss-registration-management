@@ -103,7 +103,16 @@ function rm_present_registrant_row(array $registrant, bool $is_pending = false):
     }
 
     $raw_date = trim((string) ($registrant['datestamp'] ?? ''));
-    $date_display = rm_format_payment_transaction_datetime($raw_date);
+    $registered_timestamp = $raw_date !== '' ? (strtotime($raw_date) ?: 0) : 0;
+    $date_display = $registered_timestamp > 0
+        ? wp_date('M j, Y g:iA', $registered_timestamp)
+        : 'N/A';
+    $date_display_date = $registered_timestamp > 0
+        ? wp_date('M j, Y', $registered_timestamp)
+        : 'N/A';
+    $date_display_time = $registered_timestamp > 0
+        ? wp_date('g:iA', $registered_timestamp)
+        : '';
 
     $amount_raw = $registrant['amount'] ?? null;
     if (!empty($hitpay['amount']) && is_numeric($hitpay['amount'])) {
@@ -148,6 +157,11 @@ function rm_present_registrant_row(array $registrant, bool $is_pending = false):
         $charge_amount_display = $charge_fallback_currency . ' ' . number_format_i18n($charge_amount_raw, 2);
     }
 
+    if ($charge_payment_method === '' || $charge_payment_method === 'N/A') {
+        $charge_payment_method = $payment_method;
+        $charge_payment_method_logo = $payment_method_logo;
+    }
+
     $role = (string) ($registrant['_role'] ?? '');
     $is_guest = $role === 'addon';
     $role_label = '';
@@ -185,6 +199,8 @@ function rm_present_registrant_row(array $registrant, bool $is_pending = false):
         'amount_display'     => $amount_display,
         'currency'           => $currency !== '' ? $currency : 'N/A',
         'date_display'       => $date_display,
+        'date_display_date'  => $date_display_date,
+        'date_display_time'  => $date_display_time,
         'email_sent'         => $email_sent,
         'email_sent_label'   => $email_sent ? 'Yes' : 'No',
         'is_pending'         => $is_pending,
@@ -1025,6 +1041,16 @@ function rm_build_event_registrants_data(): array
                 ['value' => 'all', 'label' => 'All packages'],
                 ['value' => 'individual', 'label' => 'Individual'],
             ],
+            'pagination'          => [
+                'current_page' => 1,
+                'total_pages'  => 1,
+                'per_page'     => rm_registrants_per_page(),
+                'total'        => 0,
+                'has_prev'     => false,
+                'has_next'     => false,
+                'from'         => 0,
+                'to'           => 0,
+            ],
         ];
     }
 
@@ -1055,33 +1081,22 @@ function rm_build_event_registrants_data(): array
     }
 
     $rows = [];
+    $per_page = rm_registrants_per_page();
+    $current_page = rm_get_registrants_page();
+    $total = count($filtered_registrants);
+    $total_pages = max(1, (int) ceil($total / $per_page));
+
+    if ($current_page > $total_pages) {
+        $current_page = $total_pages;
+    }
+
+    $offset = ($current_page - 1) * $per_page;
+    $page_registrants = array_slice($filtered_registrants, $offset, $per_page);
 
     if ($db_fetch['error'] === '') {
-        $payment_request_ids = [];
-        foreach ($filtered_registrants as $registrant) {
+        foreach ($page_registrants as $registrant) {
             if (!is_array($registrant)) {
                 continue;
-            }
-
-            $payment_request_id = trim((string) ($registrant['payment'] ?? ''));
-            if ($payment_request_id !== '') {
-                $payment_request_ids[] = $payment_request_id;
-            }
-        }
-
-        $charges_by_payment_request = rm_hitpay_map_charges_by_payment_request(
-            $event_id,
-            $payment_request_ids
-        );
-
-        foreach ($filtered_registrants as $registrant) {
-            if (!is_array($registrant)) {
-                continue;
-            }
-
-            $payment_request_id = trim((string) ($registrant['payment'] ?? ''));
-            if ($payment_request_id !== '' && isset($charges_by_payment_request[$payment_request_id])) {
-                $registrant['_charge_hitpay'] = $charges_by_payment_request[$payment_request_id];
             }
 
             $rows[] = rm_present_registrant_row($registrant, false);
@@ -1096,6 +1111,16 @@ function rm_build_event_registrants_data(): array
         'package_summary'     => $package_summary,
         'package_filter'      => $package_filter,
         'package_options'     => $package_options,
+        'pagination'          => [
+            'current_page' => $current_page,
+            'total_pages'  => $total_pages,
+            'per_page'     => $per_page,
+            'total'        => $total,
+            'has_prev'     => $current_page > 1,
+            'has_next'     => $current_page < $total_pages,
+            'from'         => $total > 0 ? $offset + 1 : 0,
+            'to'           => $total > 0 ? min($offset + $per_page, $total) : 0,
+        ],
     ];
 }
 
