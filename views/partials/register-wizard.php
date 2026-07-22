@@ -138,14 +138,20 @@ $phone_fixed_class = 'inline-flex items-center rounded-l-lg border border-r-0 bo
                     </div>
                 </fieldset>
                 <div class="pt-2 flex justify-end">
-                    <button type="button" @click="nextFromLeader()" class="rounded-lg bg-indigo-700 px-5 py-2.5 text-sm font-medium text-white hover:bg-indigo-800" x-text="leaderContinueLabel"></button>
+                    <button type="button" @click="nextFromLeader()" class="rounded-lg bg-indigo-700 px-5 py-2.5 text-sm font-medium text-white hover:bg-indigo-800">Next</button>
                 </div>
             </div>
 
             <div x-show="step === 1" class="space-y-4">
+                <h3 class="text-sm text-slate-700" x-text="membersStepHeading"></h3>
+                <p class="text-sm text-slate-500" x-show="!isIndividual">
+                    <span class="italic font-medium">Note:</span>
+                    This package requires exactly <span x-text="limits.max"></span> registrant(s). Please fill up the additional information below
+                </p>
+
                 <fieldset x-show="!isIndividual" class="rounded-lg border border-slate-200 p-4 space-y-4">
                     <legend class="text-sm font-medium text-slate-700 px-1">
-                        Additional members
+                        More Members
                         <span class="text-slate-400 font-normal">(<span x-text="members.length"></span> of <span x-text="limits.max"></span>)</span>
                     </legend>
 
@@ -239,127 +245,133 @@ $phone_fixed_class = 'inline-flex items-center rounded-l-lg border border-r-0 bo
                             @click="removeMember()"
                             class="rounded-lg border border-slate-200 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
                         >Remove last member</button>
-                        <p x-show="limits.require_all_members" class="text-sm text-slate-500">
+                        <!-- <p x-show="limits.require_all_members" class="text-sm text-slate-500">
                             This package requires exactly <span x-text="limits.max"></span> registrant(s).
-                        </p>
+                        </p> -->
                     </div>
                 </fieldset>
 
                 <template x-if="guestSchema.enabled">
-                    <fieldset class="rounded-lg border border-slate-200 p-4 space-y-4">
-                        <legend class="text-sm font-medium text-slate-700 px-1">
-                            <span x-text="guestSchema.label_plural || 'Guests'"></span>
-                            <span class="text-slate-400 font-normal">(<span x-text="guests.length"></span> of <span x-text="guestSchema.max"></span><template x-if="guestSchema.price > 0"><span> · <span x-text="formatCurrency(parseFloat(guestSchema.price))"></span> each</span></template>)</span>
-                        </legend>
-
-                        <template x-for="(guest, gIdx) in guests" :key="'guest-' + gIdx">
-                            <div class="rounded-lg border border-slate-200 p-4 space-y-4">
-                                <h4 class="text-sm font-medium text-slate-800">
-                                    <span x-text="guestSchema.label_singular || 'Guest'"></span> <span x-text="gIdx + 1"></span>
-                                </h4>
-                                <div class="grid grid-cols-1 sm:grid-cols-2 gap-5">
-                                    <template x-for="field in guestSchema.fields" :key="'g-' + gIdx + '-' + field.key">
-                                        <div :class="wideField(field) ? 'sm:col-span-2' : ''">
-                                            <label class="block text-sm font-medium text-slate-700 mb-2">
-                                                <span x-text="field.label"></span>
-                                                <span x-show="field.required" class="text-rose-500">*</span>
-                                            </label>
-                                            <template x-if="field.type === 'textarea'">
-                                                <textarea
-                                                    class="<?php echo esc_attr($input_class); ?>"
-                                                    :class="guestErrors[gIdx] && guestErrors[gIdx][field.key] ? 'border-rose-400' : ''"
-                                                    rows="3"
-                                                    x-model="guests[gIdx][field.key]"
-                                                    :placeholder="fieldPlaceholder(field)"
-                                                    :required="!!field.required"
-                                                    @input="guestErrors[gIdx] && delete guestErrors[gIdx][field.key]"
-                                                ></textarea>
-                                            </template>
-                                            <template x-if="field.type === 'select'">
-                                                <select
-                                                    class="<?php echo esc_attr($input_class); ?>"
-                                                    :class="guestErrors[gIdx] && guestErrors[gIdx][field.key] ? 'border-rose-400' : ''"
-                                                    x-model="guests[gIdx][field.key]"
-                                                    :required="!!field.required"
-                                                    @change="guestErrors[gIdx] && delete guestErrors[gIdx][field.key]"
-                                                >
-                                                    <option value="" x-text="fieldPlaceholder(field)"></option>
-                                                    <template x-for="opt in (field.options || [])" :key="opt.value || opt">
-                                                        <option :value="opt.value || opt" x-text="opt.label || opt"></option>
-                                                    </template>
-                                                </select>
-                                            </template>
-                                            <template x-if="field.type === 'phone'">
-                                                <div class="flex">
-                                                    <template x-if="coverage === 'international'">
-                                                        <select class="<?php echo esc_attr($phone_dial_class); ?>" x-model="guests[gIdx][field.key + '__dial']" @change="syncPhone(guests[gIdx], field.key); guestErrors[gIdx] && delete guestErrors[gIdx][field.key]">
-                                                            <template x-for="cc in phoneCountryCodes" :key="cc.code + cc.dial">
-                                                                <option :value="cc.dial" x-text="cc.dial + ' ' + cc.code"></option>
-                                                            </template>
-                                                        </select>
-                                                    </template>
-                                                    <template x-if="coverage !== 'international'">
-                                                        <span class="<?php echo esc_attr($phone_fixed_class); ?>">+65</span>
-                                                    </template>
-                                                    <input
-                                                        class="<?php echo esc_attr($phone_local_class); ?>"
+                    <div class="space-y-2 mb-2">
+                        <h3 class="text-md font-medium text-slate-700"><span x-text="guestSchema.label_plural || 'Guests'"></span> Registration Add-On</h3>
+                        <p class="text-sm text-slate-500" x-show="!isIndividual">
+                            Event package allows to register <span x-text="guestSchema.label_plural || 'Guests'"></span>. Please fill up the additional information below
+                        </p>
+                        <fieldset class="rounded-lg border border-slate-200 p-4 space-y-4">
+                            <legend class="text-sm font-medium text-slate-700 px-1">
+                                <span x-text="guestSchema.label_plural || 'Guests'"></span>
+                                <span class="text-slate-400 font-normal">(<span x-text="guests.length"></span> of <span x-text="guestSchema.max"></span><template x-if="guestSchema.price > 0"><span> · <span x-text="formatCurrency(parseFloat(guestSchema.price))"></span> each</span></template>)</span>
+                            </legend>
+    
+                            <template x-for="(guest, gIdx) in guests" :key="'guest-' + gIdx">
+                                <div class="rounded-lg border border-slate-200 p-4 space-y-4">
+                                    <h4 class="text-sm font-medium text-slate-800">
+                                        <span x-text="guestSchema.label_singular || 'Guest'"></span> <span x-text="gIdx + 1"></span>
+                                    </h4>
+                                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-5">
+                                        <template x-for="field in guestSchema.fields" :key="'g-' + gIdx + '-' + field.key">
+                                            <div :class="wideField(field) ? 'sm:col-span-2' : ''">
+                                                <label class="block text-sm font-medium text-slate-700 mb-2">
+                                                    <span x-text="field.label"></span>
+                                                    <span x-show="field.required" class="text-rose-500">*</span>
+                                                </label>
+                                                <template x-if="field.type === 'textarea'">
+                                                    <textarea
+                                                        class="<?php echo esc_attr($input_class); ?>"
                                                         :class="guestErrors[gIdx] && guestErrors[gIdx][field.key] ? 'border-rose-400' : ''"
-                                                        type="tel"
-                                                        inputmode="numeric"
-                                                        x-model="guests[gIdx][field.key + '__local']"
-                                                        @input="syncPhone(guests[gIdx], field.key); guestErrors[gIdx] && delete guestErrors[gIdx][field.key]"
+                                                        rows="3"
+                                                        x-model="guests[gIdx][field.key]"
                                                         :placeholder="fieldPlaceholder(field)"
                                                         :required="!!field.required"
+                                                        @input="guestErrors[gIdx] && delete guestErrors[gIdx][field.key]"
+                                                    ></textarea>
+                                                </template>
+                                                <template x-if="field.type === 'select'">
+                                                    <select
+                                                        class="<?php echo esc_attr($input_class); ?>"
+                                                        :class="guestErrors[gIdx] && guestErrors[gIdx][field.key] ? 'border-rose-400' : ''"
+                                                        x-model="guests[gIdx][field.key]"
+                                                        :required="!!field.required"
+                                                        @change="guestErrors[gIdx] && delete guestErrors[gIdx][field.key]"
+                                                    >
+                                                        <option value="" x-text="fieldPlaceholder(field)"></option>
+                                                        <template x-for="opt in (field.options || [])" :key="opt.value || opt">
+                                                            <option :value="opt.value || opt" x-text="opt.label || opt"></option>
+                                                        </template>
+                                                    </select>
+                                                </template>
+                                                <template x-if="field.type === 'phone'">
+                                                    <div class="flex">
+                                                        <template x-if="coverage === 'international'">
+                                                            <select class="<?php echo esc_attr($phone_dial_class); ?>" x-model="guests[gIdx][field.key + '__dial']" @change="syncPhone(guests[gIdx], field.key); guestErrors[gIdx] && delete guestErrors[gIdx][field.key]">
+                                                                <template x-for="cc in phoneCountryCodes" :key="cc.code + cc.dial">
+                                                                    <option :value="cc.dial" x-text="cc.dial + ' ' + cc.code"></option>
+                                                                </template>
+                                                            </select>
+                                                        </template>
+                                                        <template x-if="coverage !== 'international'">
+                                                            <span class="<?php echo esc_attr($phone_fixed_class); ?>">+65</span>
+                                                        </template>
+                                                        <input
+                                                            class="<?php echo esc_attr($phone_local_class); ?>"
+                                                            :class="guestErrors[gIdx] && guestErrors[gIdx][field.key] ? 'border-rose-400' : ''"
+                                                            type="tel"
+                                                            inputmode="numeric"
+                                                            x-model="guests[gIdx][field.key + '__local']"
+                                                            @input="syncPhone(guests[gIdx], field.key); guestErrors[gIdx] && delete guestErrors[gIdx][field.key]"
+                                                            :placeholder="fieldPlaceholder(field)"
+                                                            :required="!!field.required"
+                                                        />
+                                                    </div>
+                                                </template>
+                                                <template x-if="!['textarea','select','checkbox','checkbox_group','radio','phone'].includes(field.type)">
+                                                    <input
+                                                        class="<?php echo esc_attr($input_class); ?>"
+                                                        :class="guestErrors[gIdx] && guestErrors[gIdx][field.key] ? 'border-rose-400' : ''"
+                                                        :type="inputType(field.type)"
+                                                        x-model="guests[gIdx][field.key]"
+                                                        :placeholder="field.type === 'date' ? '' : fieldPlaceholder(field)"
+                                                        :required="!!field.required"
+                                                        @input="guestErrors[gIdx] && delete guestErrors[gIdx][field.key]"
                                                     />
-                                                </div>
-                                            </template>
-                                            <template x-if="!['textarea','select','checkbox','checkbox_group','radio','phone'].includes(field.type)">
-                                                <input
-                                                    class="<?php echo esc_attr($input_class); ?>"
-                                                    :class="guestErrors[gIdx] && guestErrors[gIdx][field.key] ? 'border-rose-400' : ''"
-                                                    :type="inputType(field.type)"
-                                                    x-model="guests[gIdx][field.key]"
-                                                    :placeholder="field.type === 'date' ? '' : fieldPlaceholder(field)"
-                                                    :required="!!field.required"
-                                                    @input="guestErrors[gIdx] && delete guestErrors[gIdx][field.key]"
-                                                />
-                                            </template>
-                                            <p x-show="guestErrors[gIdx] && guestErrors[gIdx][field.key]" class="mt-1 text-sm text-rose-600" x-text="guestErrors[gIdx] && guestErrors[gIdx][field.key]" x-cloak></p>
-                                        </div>
-                                    </template>
+                                                </template>
+                                                <p x-show="guestErrors[gIdx] && guestErrors[gIdx][field.key]" class="mt-1 text-sm text-rose-600" x-text="guestErrors[gIdx] && guestErrors[gIdx][field.key]" x-cloak></p>
+                                            </div>
+                                        </template>
+                                    </div>
                                 </div>
+                            </template>
+    
+                            <div class="flex gap-3">
+                                <button
+                                    type="button"
+                                    x-show="guests.length < guestSchema.max"
+                                    @click="addGuest()"
+                                    class="rounded-lg border border-indigo-200 bg-indigo-50 px-4 py-2 text-sm font-medium text-indigo-700 hover:bg-indigo-100"
+                                >
+                                    Add <span x-text="(guestSchema.label_singular || 'Guest').toLowerCase()"></span>
+                                </button>
+                                <button
+                                    type="button"
+                                    x-show="guests.length > guestSchema.min"
+                                    @click="removeGuest()"
+                                    class="rounded-lg border border-slate-200 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+                                >
+                                    Remove last <span x-text="(guestSchema.label_singular || 'guest').toLowerCase()"></span>
+                                </button>
                             </div>
-                        </template>
-
-                        <div class="flex gap-3">
-                            <button
-                                type="button"
-                                x-show="guests.length < guestSchema.max"
-                                @click="addGuest()"
-                                class="rounded-lg border border-indigo-200 bg-indigo-50 px-4 py-2 text-sm font-medium text-indigo-700 hover:bg-indigo-100"
-                            >
-                                Add <span x-text="(guestSchema.label_singular || 'Guest').toLowerCase()"></span>
-                            </button>
-                            <button
-                                type="button"
-                                x-show="guests.length > guestSchema.min"
-                                @click="removeGuest()"
-                                class="rounded-lg border border-slate-200 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
-                            >
-                                Remove last <span x-text="(guestSchema.label_singular || 'guest').toLowerCase()"></span>
-                            </button>
-                        </div>
-                    </fieldset>
+                        </fieldset>
+                    </div>
                 </template>
 
                 <div class="pt-2 flex justify-between">
                     <button type="button" @click="step = 0" class="text-sm font-medium text-slate-700 hover:text-slate-900">Back</button>
-                    <button type="button" @click="nextToSummary()" class="rounded-lg bg-indigo-700 px-5 py-2.5 text-sm font-medium text-white hover:bg-indigo-800">Review summary</button>
+                    <button type="button" @click="nextToSummary()" class="rounded-lg bg-indigo-700 px-5 py-2.5 text-sm font-medium text-white hover:bg-indigo-800">Next</button>
                 </div>
             </div>
 
             <div x-show="step === 2" class="space-y-4">
-                <h3 class="text-base font-semibold text-slate-900">Summary</h3>
+                <h3 class="text-base font-semibold text-slate-900">Review Summary & Checkout</h3>
                 <div class="rounded-lg border border-slate-200 divide-y divide-slate-100">
                     <template x-for="(member, index) in members" :key="'summary-' + index">
                         <div class="p-4 flex items-start justify-between gap-4">
@@ -390,7 +402,15 @@ $phone_fixed_class = 'inline-flex items-center rounded-l-lg border border-r-0 bo
                 <p class="text-xs text-slate-500">Final amount is calculated on the server when you submit.</p>
                 <div class="pt-2 flex justify-between">
                     <button type="button" @click="backFromSummary()" class="text-sm font-medium text-slate-700 hover:text-slate-900">Back</button>
-                    <button type="submit" class="rounded-lg bg-indigo-700 px-5 py-2.5 text-sm font-medium text-white hover:bg-indigo-800">Submit registration</button>
+                    <template x-if="step === 2">
+                        <button
+                            type="submit"
+                            :disabled="isSubmitting"
+                            class="rounded-lg bg-indigo-700 px-5 py-2.5 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-60"
+                            :class="!isSubmitting && 'hover:bg-indigo-800'"
+                            x-text="isSubmitting ? 'Checking out....' : 'Checkout'"
+                        ></button>
+                    </template>
                 </div>
             </div>
         </form>
@@ -401,6 +421,7 @@ $phone_fixed_class = 'inline-flex items-center rounded-l-lg border border-r-0 bo
 function rmRegisterWizard() {
     return {
         step: 0,
+        isSubmitting: false,
         mode: 'group_flat',
         get isIndividual() {
             return this.mode === 'individual' || this.limits.max <= 1;
@@ -410,12 +431,12 @@ function rmRegisterWizard() {
         },
         get stepLabels() {
             if (this.isIndividual && this.guestSchema.enabled) {
-                return ['Registrant', (this.guestSchema.label_plural || 'Guests'), 'Summary'];
+                return ['Registrant', (this.guestSchema.label_plural || 'Guests'), 'Review Summary & Checkout'];
             }
             if (this.isIndividual) {
-                return ['Registrant', 'Summary'];
+                return ['Registrant', 'Review Summary & Checkout'];
             }
-            return ['Leader', 'Members', 'Summary'];
+            return ['Leader', 'Members', 'Review Summary & Checkout'];
         },
         get stepperIndex() {
             if (this.skipsMembersStep) {
@@ -423,14 +444,13 @@ function rmRegisterWizard() {
             }
             return this.step;
         },
-        get leaderContinueLabel() {
-            if (this.skipsMembersStep) {
-                return 'Review summary';
+        get membersStepHeading() {
+            if (!this.isIndividual) {
+                return 'Additional Member';
             }
-            if (this.isIndividual && this.guestSchema.enabled) {
-                return 'Continue to ' + (this.guestSchema.label_plural || 'guests').toLowerCase();
-            }
-            return 'Continue to members';
+            const addonName = this.guestSchema.label_plural || this.guestSchema.label_singular || 'Guest';
+            const optional = this.guestSchema.min === 0 ? ' (Optional)' : '';
+            return 'Event package allows to register ' + addonName + '. Kindly fill-up the additional information below.' + optional;
         },
         schema: { fields: [] },
         guestSchema: { fields: [], enabled: false, label_singular: 'Guest', label_plural: 'Guests', min: 0, max: 0, price: 0 },
@@ -800,6 +820,30 @@ function rmRegisterWizard() {
             return this.formatCurrency(total);
         },
         prepareSubmit(event) {
+            if (this.step === 2 && this.isSubmitting) {
+                if (event) event.preventDefault();
+                return;
+            }
+
+            // Enter in an input submits the form even on earlier steps (submit button is only hidden via CSS).
+            // Block that and advance with the same validation as the Next buttons.
+            if (this.step !== 2) {
+                if (event) event.preventDefault();
+                if (this.step === 0) {
+                    this.nextFromLeader();
+                } else if (this.step === 1) {
+                    this.nextToSummary();
+                }
+                return;
+            }
+
+            if (this.limits.require_all_members && this.members.length !== this.limits.max) {
+                if (event) event.preventDefault();
+                this.step = 1;
+                alert('This package requires exactly ' + this.limits.max + ' registrant(s).');
+                return;
+            }
+
             for (let i = 0; i < this.members.length; i++) {
                 const result = this.validateMember(this.members[i]);
                 if (result.firstMessage) {
@@ -815,25 +859,34 @@ function rmRegisterWizard() {
                     return;
                 }
             }
+
             if (this.guestSchema.enabled) {
+                const gLabel = (this.guestSchema.label_singular || 'guest').toLowerCase();
+                if (this.guests.length < this.guestSchema.min) {
+                    if (event) event.preventDefault();
+                    this.step = 1;
+                    alert('At least ' + this.guestSchema.min + ' ' + gLabel + '(s) required.');
+                    return;
+                }
                 for (let g = 0; g < this.guests.length; g++) {
                     const result = this.validateGuest(this.guests[g]);
                     if (result.firstMessage) {
                         if (event) event.preventDefault();
                         this.guestErrors[g] = result.errors;
                         this.step = 1;
-                        const gLabel = (this.guestSchema.label_singular || 'guest').toLowerCase();
                         alert(result.firstMessage + ' (' + gLabel + ' ' + (g + 1) + ')');
                         return;
                     }
                 }
             }
+
             this.serializedMembers = JSON.stringify(
                 this.members.map((m) => this.serializeRow(m, this.schema.fields))
             );
             this.serializedGuests = this.guestSchema.enabled
                 ? JSON.stringify(this.guests.map((g) => this.serializeRow(g, this.guestSchema.fields)))
                 : '[]';
+            this.isSubmitting = true;
         }
     };
 }

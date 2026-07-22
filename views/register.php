@@ -132,7 +132,7 @@ $privacy_policy_url = function_exists('get_privacy_policy_url') ? get_privacy_po
                                     type="submit"
                                     class="w-full sm:w-auto rounded-lg bg-indigo-700 px-5 py-2.5 text-sm font-medium text-white hover:bg-indigo-800 transition"
                                 >
-                                    Submit Registration
+                                    Checkout
                                 </button>
                                 <a
                                     href="<?php echo esc_url($page_url); ?>"
