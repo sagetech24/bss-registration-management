@@ -176,7 +176,7 @@
                                             <?php if (!empty($card['categories']) && is_array($card['categories'])) : ?>
                                                 <div class="mt-3 flex flex-wrap gap-1.5">
                                                     <?php foreach ($card['categories'] as $category_name) : ?>
-                                                        <span class="inline-flex items-center rounded-full border border-slate-200 bg-slate-100 px-2 py-0.5 text-[10px] font-medium text-slate-700">
+                                                        <span class="inline-flex items-center rounded-full border border-slate-200 capitalize bg-slate-100 px-2 py-0.5 text-[10px] font-medium text-slate-700">
                                                             <?php echo esc_html((string) $category_name); ?>
                                                         </span>
                                                     <?php endforeach; ?>
@@ -275,27 +275,37 @@
                                         <?php if ($card['venue_show'] !== '') : ?>
                                             <p class="text-sm text-slate-500 mt-1"><?php echo esc_html($card['venue_show']); ?></p>
                                         <?php endif; ?>
+                                        <?php if (!empty($card['categories']) && is_array($card['categories'])) : ?>
+                                            <div class="mt-3 flex flex-wrap gap-1.5">
+                                                <?php foreach ($card['categories'] as $category_name) : ?>
+                                                    <span class="inline-flex items-center rounded-full border border-slate-200 capitalize bg-slate-100 px-2 py-0.5 text-[10px] font-medium text-slate-700">
+                                                        <?php echo esc_html((string) $category_name); ?>
+                                                    </span>
+                                                <?php endforeach; ?>
+                                            </div>
+                                        <?php endif; ?>
                                     </div>
                                     <div class="border-t border-slate-200 mt-auto">
-                                        <div class="grid grid-cols-3 gap-2 p-4">
-                                            <a href="<?php echo esc_url($card['profile_href']); ?>" class="text-xs font-medium text-indigo-700 hover:text-indigo-900 flex items-center gap-1">
-                                                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="size-4 shrink-0">
-                                                    <path stroke-linecap="round" stroke-linejoin="round" d="M3.75 6A2.25 2.25 0 0 1 6 3.75h2.25A2.25 2.25 0 0 1 10.5 6v2.25a2.25 2.25 0 0 1-2.25 2.25H6a2.25 2.25 0 0 1-2.25-2.25V6ZM3.75 15.75A2.25 2.25 0 0 1 6 13.5h2.25a2.25 2.25 0 0 1 2.25 2.25V18a2.25 2.25 0 0 1-2.25 2.25H6A2.25 2.25 0 0 1 3.75 18v-2.25ZM13.5 6a2.25 2.25 0 0 1 2.25-2.25H18A2.25 2.25 0 0 1 20.25 6v2.25A2.25 2.25 0 0 1 18 10.5h-2.25a2.25 2.25 0 0 1-2.25-2.25V6ZM13.5 15.75a2.25 2.25 0 0 1 2.25-2.25H18a2.25 2.25 0 0 1 2.25 2.25V18A2.25 2.25 0 0 1 18 20.25h-2.25A2.25 2.25 0 0 1 13.5 18v-2.25Z" />
-                                                </svg>
-                                                Dashboard
-                                            </a>
-                                            <a href="<?php echo esc_url($card['registrants_href']); ?>" class="text-xs font-medium text-indigo-700 hover:text-indigo-900 flex items-center gap-1">
-                                                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="size-4 shrink-0">
-                                                    <path stroke-linecap="round" stroke-linejoin="round" d="M18 18.72a9.094 9.094 0 0 0 3.741-.479 3 3 0 0 0-4.682-2.72m.94 3.198.001.031c0 .225-.012.447-.037.666A11.944 11.944 0 0 1 12 21c-2.17 0-4.207-.576-5.963-1.584A6.062 6.062 0 0 1 6 18.719m12 0a5.971 5.971 0 0 0-.941-3.197m0 0A5.995 5.995 0 0 0 12 12.75a5.995 5.995 0 0 0-5.058 2.772m0 0a3 3 0 0 0-4.681 2.72 8.986 8.986 0 0 0 3.74.477m.94-3.197a5.971 5.971 0 0 0-.94 3.197M15 6.75a3 3 0 1 1-6 0 3 3 0 0 1 6 0Zm6 3a2.25 2.25 0 1 1-4.5 0 2.25 2.25 0 0 1 4.5 0Zm-13.5 0a2.25 2.25 0 1 1-4.5 0 2.25 2.25 0 0 1 4.5 0Z" />
-                                                </svg>
-                                                Registrants
-                                            </a>
-                                            <a href="<?php echo esc_url($card['registration_href']); ?>" class="text-xs font-medium text-indigo-700 hover:text-indigo-900 flex items-center gap-1" target="_blank" rel="noopener noreferrer">
-                                                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="size-4 shrink-0">
-                                                    <path stroke-linecap="round" stroke-linejoin="round" d="M12 6.042A8.967 8.967 0 0 0 6 3.75c-1.052 0-2.062.18-3 .512v14.25A8.987 8.987 0 0 1 6 18c2.305 0 4.408.867 6 2.292m0-14.25a8.966 8.966 0 0 1 6-2.292c1.052 0 2.062.18 3 .512v14.25A8.987 8.987 0 0 0 18 18a8.967 8.967 0 0 0-6 2.292m0-14.25v14.25" />
-                                                </svg>
-                                                Form
-                                            </a>
+                                        <div class="flex justify-center items-center gap-2 py-2 px-2.5">
+                                            <div class="text-center">
+                                                <a href="<?php echo esc_url($card['profile_href']); ?>" class="text-xs font-medium text-indigo-700 hover:text-indigo-900">
+                                                    Dashboard
+                                                </a>
+                                            </div>
+                                            <span class="text-slate-400">|</span>
+                                            <div class="text-center">
+                                                <a href="<?php echo esc_url($card['registrants_href']); ?>" class="text-xs font-medium text-indigo-700 hover:text-indigo-900">
+                                                    Registrants
+                                                </a>
+                                            </div>
+                                            <?php if ($card['registration_href'] !== '') : ?>
+                                                <span class="text-slate-400">|</span>
+                                                <div class="text-center">
+                                                    <a href="<?php echo esc_url($card['registration_href']); ?>" class="text-xs font-medium text-indigo-700 hover:text-indigo-900" target="_blank" rel="noopener noreferrer">
+                                                        Form
+                                                    </a>
+                                                </div>
+                                            <?php endif; ?>
                                         </div>
                                         <?php if (!empty($card['package_urls']) && is_array($card['package_urls'])) : ?>
                                             <div class="border-t border-slate-100 px-4 pb-4 pt-2 space-y-1">
