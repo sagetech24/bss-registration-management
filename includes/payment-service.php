@@ -354,7 +354,8 @@ function rm_payment_webhooks_enabled(): bool
 
 /**
  * Webhooks are enabled only on production (https://biblesociety.sg).
- * All other environments finalize via the payment-return redirect.
+ * Pending → paid migration happens only from a completed webhook.
+ * The payment-return redirect is display-only (never finalizes).
  */
 function rm_payment_webhook_url(): ?string
 {
@@ -855,6 +856,82 @@ function rm_payment_resolve_return_request_id(int $pending_id, string $query_ref
 }
 
 /**
+ * Classify HitPay state for the payment-return page (UI only — never finalizes).
+ *
+ * @return 'completed'|'failed'|'pending'|'unknown'
+ */
+function rm_payment_probe_return_state(
+    int $pending_id,
+    string $payment_request_id,
+    string $query_status = ''
+): string {
+    if (rm_payment_return_is_completed($query_status)) {
+        return 'completed';
+    }
+
+    $query_status = strtolower(trim($query_status));
+    if (in_array($query_status, ['failed', 'expired', 'canceled', 'cancelled'], true)) {
+        return 'failed';
+    }
+
+    $payment_request_id = sanitize_text_field(trim($payment_request_id));
+    if ($payment_request_id === '') {
+        return 'unknown';
+    }
+
+    $pending = rm_payment_load_pending($pending_id);
+    $event_id = $pending !== null && isset($pending['events']) ? absint($pending['events']) : 0;
+    $lookup = rm_payment_get_request($payment_request_id, $event_id);
+
+    if (!$lookup['ok'] || !is_array($lookup['data'])) {
+        return 'unknown';
+    }
+
+    if (rm_payment_is_completed($lookup['data'])) {
+        return 'completed';
+    }
+
+    $status = isset($lookup['data']['status'])
+        ? strtolower(trim((string) $lookup['data']['status']))
+        : '';
+
+    if (in_array($status, ['failed', 'expired', 'canceled', 'cancelled'], true)) {
+        return 'failed';
+    }
+
+    if ($status === 'pending' || $status === 'active') {
+        return 'pending';
+    }
+
+    return 'unknown';
+}
+
+/**
+ * Wait briefly for webhook finalize without migrating from the redirect path.
+ */
+function rm_payment_wait_for_finalized_order(
+    int $pending_id,
+    string $confirmation,
+    int $max_attempts = 3
+): string {
+    $max_attempts = max(1, $max_attempts);
+    $order_number = '';
+
+    for ($attempt = 1; $attempt <= $max_attempts; $attempt++) {
+        $order_number = rm_payment_find_finalized_order_for_return($pending_id, $confirmation);
+        if ($order_number !== '') {
+            return $order_number;
+        }
+
+        if ($attempt < $max_attempts) {
+            usleep(1500000);
+        }
+    }
+
+    return $order_number;
+}
+
+/**
  * @return string Order number when already paid, else empty.
  */
 function rm_payment_find_finalized_order_by_payment_request(string $payment_request_id): string
@@ -1053,7 +1130,12 @@ function rm_payment_fetch_completed_request(string $payment_request_id, int $eve
         }
     }
 
-    return $lookup;
+    // API success alone is not enough — incomplete/cancelled requests must not finalize.
+    return [
+        'ok'    => false,
+        'data'  => null,
+        'error' => 'Payment is not completed.',
+    ];
 }
 
 function rm_payment_return_is_completed(string $payment_status): bool
@@ -1148,11 +1230,11 @@ function rm_payment_handle_completed(int $pending_id, string $payment_request_id
     $expected_amount = isset($pending['amount']) ? (float) $pending['amount'] : 0.0;
 
     $lookup = rm_payment_fetch_completed_request($payment_request_id, $event_id);
-    if (!$lookup['ok'] || !is_array($lookup['data'])) {
+    if (!$lookup['ok'] || !is_array($lookup['data']) || !rm_payment_is_completed($lookup['data'])) {
         return [
             'ok'           => false,
             'order_number' => '',
-            'error'        => $lookup['error'] !== '' ? $lookup['error'] : 'Could not verify payment.',
+            'error'        => $lookup['error'] !== '' ? $lookup['error'] : 'Payment is not completed.',
         ];
     }
 

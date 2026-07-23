@@ -258,9 +258,10 @@ function rm_handle_payment_return(): void
     }
 
     // PayNow QR on a second device often opens redirect_url without HitPay's
-    // status/reference. Resolve the payment request from pending/transient and
-    // treat webhook-finalized registrations as success.
+    // status/reference. Resolve the payment request from pending/transient.
+    // Migration pending → paid is webhook-only; this path is display-only.
     $payment_request_id = rm_payment_resolve_return_request_id($pending_id, $payment_reference);
+    $hitpay_state = rm_payment_probe_return_state($pending_id, $payment_request_id, $payment_status);
 
     $debug_return = [
         'event_code'            => $event_code,
@@ -269,51 +270,46 @@ function rm_handle_payment_return(): void
         'query_reference'       => $payment_reference,
         'query_confirmation'    => $confirmation,
         'resolved_request_id'   => $payment_request_id,
+        'hitpay_state'          => $hitpay_state,
+        'finalize_source'       => 'webhook_only',
         'get'                   => isset($_GET) && is_array($_GET) ? $_GET : [],
         'request_uri'           => isset($_SERVER['REQUEST_URI']) ? (string) $_SERVER['REQUEST_URI'] : '',
     ];
 
-    $result = [
-        'ok'           => false,
-        'order_number' => '',
-        'error'        => '',
-    ];
+    $order_number = rm_payment_find_finalized_order_for_return($pending_id, $confirmation);
+    $debug_return['already_paid_order'] = $order_number;
 
-    if ($payment_request_id !== '') {
-        // Always verify via HitPay / DB — do not require query status.
-        // Bank-app redirects after PayNow frequently omit status/reference.
-        $result = rm_payment_handle_completed($pending_id, $payment_request_id);
-        $debug_return['handle_completed'] = $result;
-    } else {
-        $debug_return['handle_completed'] = null;
+    // Successful pay can land here before the webhook finishes. Wait briefly
+    // when HitPay already reports completed (or status is unknown, e.g. PayNow).
+    if ($order_number === '' && ($hitpay_state === 'completed' || $hitpay_state === 'unknown')) {
+        $wait_attempts = $hitpay_state === 'completed' ? 4 : 2;
+        $order_number = rm_payment_wait_for_finalized_order($pending_id, $confirmation, $wait_attempts);
+        $debug_return['already_paid_order'] = $order_number;
+        $debug_return['webhook_wait_attempts'] = $wait_attempts;
     }
 
-    if (!$result['ok']) {
-        $already_paid = rm_payment_find_finalized_order_for_return($pending_id, $confirmation);
-        $debug_return['already_paid_order'] = $already_paid;
-        if ($already_paid !== '') {
-            $result = [
-                'ok'           => true,
-                'order_number' => $already_paid,
-                'error'        => '',
-            ];
+    if ($order_number !== '') {
+        // Webhook is the primary email sender; this call is idempotent via
+        // is_email_confirmation_sent and covers race-window returns.
+        if (function_exists('rm_email_send_payment_confirmation')) {
+            $email_result = rm_email_send_payment_confirmation($order_number);
+            if (!$email_result['ok']) {
+                error_log(
+                    '[rm_payment] Confirmation email failed for order '
+                    . $order_number . ': ' . ($email_result['error'] ?? '')
+                );
+            } elseif (!empty($email_result['dry_run'])) {
+                error_log(
+                    '[rm_payment] Confirmation email dry-run for order ' . $order_number
+                );
+            }
         }
-    } else {
-        $debug_return['already_paid_order'] = '';
-    }
 
-    if (!$result['ok']) {
-        error_log(
-            '[rm_payment] Payment return could not confirm success.'
-            . ' pending_id=' . $pending_id
-            . ' status=' . ($payment_status !== '' ? $payment_status : '(empty)')
-            . ' reference=' . ($payment_reference !== '' ? $payment_reference : '(empty)')
-            . ' resolved_request_id=' . ($payment_request_id !== '' ? 'yes' : 'no')
-            . ' confirmation=' . ($confirmation !== '' ? 'yes' : 'no')
-            . ' error=' . ($result['error'] !== '' ? $result['error'] : '(none)')
+        $flash_key = rm_store_registration_success_flash(
+            $order_number,
+            'confirmed',
+            $debug_return
         );
-
-        $flash_key = rm_store_registration_success_flash('', 'payment_failed', $debug_return);
         wp_safe_redirect(
             rm_registration_url([
                 'event_code' => $event_code,
@@ -323,28 +319,28 @@ function rm_handle_payment_return(): void
         exit;
     }
 
-    // Webhooks only run on production; send the confirmation here so local
-    // and redirect-finalized registrations still get an email. The
-    // is_email_confirmation_sent flag prevents duplicates when both fire.
-    if (!empty($result['order_number']) && function_exists('rm_email_send_payment_confirmation')) {
-        $email_result = rm_email_send_payment_confirmation((string) $result['order_number']);
-        if (!$email_result['ok']) {
-            error_log(
-                '[rm_payment] Confirmation email failed for order '
-                . $result['order_number'] . ': ' . ($email_result['error'] ?? '')
-            );
-        } elseif (!empty($email_result['dry_run'])) {
-            error_log(
-                '[rm_payment] Confirmation email dry-run for order ' . $result['order_number']
-            );
-        }
+    // Not finalized — never call rm_payment_handle_completed() here.
+    if ($hitpay_state === 'completed') {
+        $flash_status = 'payment_processing';
+        error_log(
+            '[rm_payment] Payment return: HitPay completed but webhook has not finalized yet.'
+            . ' pending_id=' . $pending_id
+            . ' request_id=' . ($payment_request_id !== '' ? 'yes' : 'no')
+        );
+    } else {
+        $flash_status = 'payment_failed';
+        error_log(
+            '[rm_payment] Payment return could not confirm success.'
+            . ' pending_id=' . $pending_id
+            . ' status=' . ($payment_status !== '' ? $payment_status : '(empty)')
+            . ' hitpay_state=' . $hitpay_state
+            . ' reference=' . ($payment_reference !== '' ? $payment_reference : '(empty)')
+            . ' resolved_request_id=' . ($payment_request_id !== '' ? 'yes' : 'no')
+            . ' confirmation=' . ($confirmation !== '' ? 'yes' : 'no')
+        );
     }
 
-    $flash_key = rm_store_registration_success_flash(
-        $result['order_number'],
-        'confirmed',
-        $debug_return
-    );
+    $flash_key = rm_store_registration_success_flash('', $flash_status, $debug_return);
     wp_safe_redirect(
         rm_registration_url([
             'event_code' => $event_code,

@@ -4,24 +4,14 @@ if ($receipt === null) {
     return;
 }
 
-// TEMP DEBUG — remove after diagnosing PayNow QR second-device return.
-// echo '<pre style="max-width:100%;overflow:auto;background:#111;color:#0f0;padding:1rem;font-size:12px;text-align:left;">';
-// echo "=== registration-receipt.php dump ===\n";
-// echo "--- \$receipt ---\n";
-// var_dump($receipt);
-// echo "\n--- \$_GET (current page) ---\n";
-// var_dump($_GET);
-// echo "\n--- payment return debug (from flash) ---\n";
-// var_dump($receipt['debug'] ?? null);
-// echo '</pre>';
-
 $status = (string) ($receipt['status'] ?? 'confirmed');
 $is_failed = $status === 'payment_failed';
-$title = (string) ($receipt['title'] ?? 'Registration confirmed');
+$is_processing = $status === 'payment_processing';
+$is_pending = $status === 'pending_payment';
 $confirmation_email = trim((string) ($receipt['confirmation_email'] ?? ''));
 $register_another_href = (string) ($receipt['register_another_href'] ?? '');
 $event_landing_href = (string) ($receipt['event_landing_href'] ?? '');
-$show_event_landing = !empty($receipt['show_event_landing']) && $event_landing_href !== '';
+$message = trim((string) ($receipt['message'] ?? ''));
 
 /**
  * @param list<array{label: string, value: string}> $rows
@@ -41,7 +31,40 @@ $render_detail_table = static function (array $rows): void {
     echo '</dl>';
 };
 ?>
-<?php if (!$is_failed) : ?>
+<?php if ($is_failed) : ?>
+    <div class="flex flex-col gap-4 justify-center items-center">
+        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="size-16 stroke-red-500">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m9-.75a9 9 0 1 1-18 0 9 9 0 0 1 18 0Zm-9 3.75h.008v.008H12v-.008Z" />
+        </svg>
+        <p class="text-4xl lg:text-3xl font-semibold text-red-500 text-center">Payment not completed</p>
+        <p class="mt-3 text-lg lg:text-sm text-red-700 text-center"><?php echo esc_html($message !== '' ? $message : (string) ($receipt['message'] ?? '')); ?></p>
+        <div class="mt-8 flex justify-center items-center gap-2">
+            <a href="<?php echo esc_url($event_landing_href); ?>" class="inline-flex items-center justify-center rounded-lg bg-red-500 px-5 py-2.5 text-sm font-medium text-white hover:bg-red-600 transition">
+                Go back to Event Page
+            </a>
+        </div>
+    </div>
+<?php elseif ($is_processing || $is_pending) : ?>
+    <div class="flex flex-col gap-4 justify-center items-center">
+        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="size-16 stroke-amber-500">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" />
+        </svg>
+        <p class="text-4xl lg:text-3xl font-semibold text-amber-600 text-center">
+            <?php echo esc_html($is_processing ? 'Confirming your payment' : 'Registration received'); ?>
+        </p>
+        <p class="mt-3 text-lg lg:text-sm text-amber-800 text-center"><?php echo esc_html($message); ?></p>
+        <div class="mt-8 flex justify-center items-center gap-2">
+            <a href="<?php echo esc_url($event_landing_href); ?>" class="inline-flex items-center justify-center rounded-lg bg-amber-500 px-5 py-2.5 text-sm font-medium text-white hover:bg-amber-600 transition">
+                Go back to Event Page
+            </a>
+            <?php if ($register_another_href !== '') : ?>
+                <a href="<?php echo esc_url($register_another_href); ?>" class="inline-flex items-center justify-center border border-slate-300 rounded-lg bg-slate-200 px-5 py-2.5 text-sm font-medium text-slate-700 hover:bg-slate-100 transition">
+                    Register Another
+                </a>
+            <?php endif; ?>
+        </div>
+    </div>
+<?php else : ?>
     <div class="flex flex-col gap-4 justify-center items-center">
         <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="size-16 stroke-green-500">
             <path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75 11.25 15 15 9.75M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" />
@@ -54,20 +77,6 @@ $render_detail_table = static function (array $rows): void {
             </a>
             <a href="<?php echo esc_url($register_another_href); ?>" class="inline-flex items-center justify-center border border-slate-300 rounded-lg bg-slate-200 px-5 py-2.5 text-sm font-medium text-slate-700 hover:bg-slate-100 transition">
                 Register Another
-            </a>
-        </div>
-    </div>
-<?php else : ?>
-
-    <div class="flex flex-col gap-4 justify-center items-center">
-        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="size-16 stroke-red-500">
-            <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m9-.75a9 9 0 1 1-18 0 9 9 0 0 1 18 0Zm-9 3.75h.008v.008H12v-.008Z" />
-        </svg>
-        <p class="text-4xl lg:text-3xl font-semibold text-red-500 text-center">Registration Failed</p>
-        <p class="mt-3 text-lg lg:text-sm text-red-700 text-center"><?php echo esc_html((string) $receipt['message']); ?></p>
-        <div class="mt-8 flex justify-center items-center gap-2">
-            <a href="<?php echo esc_url($event_landing_href); ?>" class="inline-flex items-center justify-center rounded-lg bg-red-500 px-5 py-2.5 text-sm font-medium text-white hover:bg-red-600 transition">
-                Go back to Event Page
             </a>
         </div>
     </div>

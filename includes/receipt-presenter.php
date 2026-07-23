@@ -219,6 +219,23 @@ function rm_present_registration_receipt(
         ];
     }
 
+    if ($status === 'payment_processing' || ($status === 'pending_payment' && $order_number === '')) {
+        return [
+            'status'                => $status === 'payment_processing' ? 'payment_processing' : 'pending_payment',
+            'title'                 => $status === 'payment_processing'
+                ? 'Confirming your payment'
+                : 'Registration received',
+            'message'               => rm_registration_success_message(
+                $status === 'payment_processing' ? 'payment_processing' : 'pending_payment'
+            ),
+            'confirmation_email'    => '',
+            'register_another_href' => $register_another_href,
+            'event_landing_href'    => $event_landing_href,
+            'show_event_landing'    => $show_event_landing,
+            'debug'                 => $debug,
+        ];
+    }
+
     $confirmation = $order_number !== '' ? rm_email_load_confirmation_context($order_number) : null;
     $payment_meta = rm_receipt_payment_meta($order_number);
 

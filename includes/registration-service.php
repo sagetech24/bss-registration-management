@@ -667,6 +667,10 @@ function rm_registration_success_message(string $status): string
         return 'Thank you! Your registration has been received. Please complete payment to confirm your spot.';
     }
 
+    if ($status === 'payment_processing') {
+        return 'Payment received. Your registration is being confirmed — you will receive an email shortly.';
+    }
+
     if ($status === 'payment_failed') {
         return 'Payment was not completed. Your registration is saved; please try again or contact us.';
     }
