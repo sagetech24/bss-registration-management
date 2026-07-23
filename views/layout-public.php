@@ -35,7 +35,7 @@
             ?>
             <main class="flex-1 w-full pb-8">
                 <div
-                    class="relative min-h-[300px] flex items-center justify-center bg-cover bg-center <?php echo $has_banner ? '' : 'bg-slate-900'; ?>"
+                    class="relative min-h-[440px] flex items-center justify-center bg-cover bg-center <?php echo $has_banner ? '' : 'bg-slate-900'; ?>"
                     <?php if ($has_banner) : ?>
                         style="background-image: url('<?php echo esc_url($banner_url); ?>');"
                     <?php endif; ?>
