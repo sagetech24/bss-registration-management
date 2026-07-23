@@ -274,17 +274,27 @@ function rm_email_load_v2_confirmation_context(string $order_number): ?array
     }
 
     $members = [];
-    $guests = [];
+    $guest_lines = [];
     foreach ($lines as $line) {
         if (!is_array($line)) {
             continue;
         }
-        $person = rm_email_present_person_line($line);
         if (($line['role'] ?? '') === 'addon') {
-            $guests[] = $person;
+            $guest_lines[] = $line;
         } else {
-            $members[] = $person;
+            $members[] = rm_email_present_person_line($line);
         }
+    }
+
+    $guest_schema = rm_email_resolve_guest_schema($header, $event_id);
+    $guests = [];
+    foreach ($guest_lines as $gi => $guest_line) {
+        $guests[] = rm_email_present_guest_line(
+            $guest_line,
+            $guest_schema['fields'],
+            $guest_schema['label_singular'],
+            $gi
+        );
     }
 
     $primary = $members[0] ?? null;
@@ -299,6 +309,14 @@ function rm_email_load_v2_confirmation_context(string $order_number): ?array
         : 'Individual';
 
     $amount = isset($header['total_amount']) ? (float) $header['total_amount'] : 0.0;
+    $currency = 'SGD';
+    if (function_exists('rm_get_event_by_id') && function_exists('rm_registration_currency')) {
+        $source = function_exists('rm_infer_event_source') ? rm_infer_event_source($event_id) : '';
+        $event_row = rm_get_event_by_id($event_id, $source);
+        if (is_array($event_row) && $event_row !== []) {
+            $currency = rm_registration_currency($event_row);
+        }
+    }
     $payment_option = trim((string) ($header['payment_option'] ?? ''));
     if ($payment_option === '' || $payment_option === 'N/A') {
         $payment_method = 'N/A';
@@ -321,8 +339,10 @@ function rm_email_load_v2_confirmation_context(string $order_number): ?array
         'primary'             => $primary,
         'members'             => $members,
         'guests'              => $guests,
+        'guest_label_singular'=> $guest_schema['label_singular'],
+        'guest_label_plural'  => $guest_schema['label_plural'],
         'package_label'       => $package_label,
-        'amount_display'      => 'SGD ' . number_format($amount, 2),
+        'amount_display'      => $currency . ' ' . number_format($amount, 2),
         'payment_method'      => $payment_method,
         'payment_status'      => (string) ($header['payment_status'] ?? ''),
         'registration_mode'   => (string) ($header['registration_mode'] ?? ''),
@@ -395,6 +415,8 @@ function rm_email_load_legacy_confirmation_context(string $order_number): ?array
         'primary'             => $primary,
         'members'             => [$primary],
         'guests'              => [],
+        'guest_label_singular'=> 'Guest',
+        'guest_label_plural'  => 'Guests',
         'package_label'       => '',
         'amount_display'      => 'SGD ' . number_format($amount, 2),
         'payment_method'      => $payment_method,
@@ -413,22 +435,32 @@ function rm_email_load_legacy_confirmation_context(string $order_number): ?array
 function rm_email_load_event_row(int $event_id): array
 {
     $empty = [
-        'id'            => $event_id,
-        'title'         => 'Event',
-        'email'         => '',
-        'venue'         => '',
-        'date_display'  => '',
-        'thumb'         => '',
+        'id'           => $event_id,
+        'title'        => 'Event',
+        'email'        => '',
+        'venue'        => '',
+        'date_display' => '',
+        'thumb'        => '',
+        'logo_url'     => '',
     ];
 
     if ($event_id < 1) {
         return $empty;
     }
 
+    $event = null;
     if (function_exists('rm_get_event_by_id')) {
-        $event = rm_get_event_by_id($event_id);
-        if (!is_array($event) || $event === []) {
-            return $empty;
+        $source = function_exists('rm_infer_event_source')
+            ? rm_infer_event_source($event_id)
+            : '';
+        $event = rm_get_event_by_id($event_id, $source);
+
+        // Legacy callers may store CPT ids without a source hint.
+        if ((!is_array($event) || $event === []) && $source !== 'cpt' && function_exists('rm_get_cpt_event_by_id')) {
+            $cpt = rm_get_cpt_event_by_id($event_id);
+            if (is_array($cpt) && $cpt !== []) {
+                $event = $cpt;
+            }
         }
     } else {
         global $wpdb;
@@ -436,9 +468,10 @@ function rm_email_load_event_row(int $event_id): array
             $wpdb->prepare('SELECT * FROM `bss_events` WHERE `id` = %d LIMIT 1', $event_id),
             ARRAY_A
         );
-        if (!is_array($event) || $event === []) {
-            return $empty;
-        }
+    }
+
+    if (!is_array($event) || $event === []) {
+        return $empty;
     }
 
     $title = trim((string) ($event['title'] ?? ''));
@@ -446,15 +479,252 @@ function rm_email_load_event_row(int $event_id): array
     $date_display = function_exists('rm_format_event_date_display')
         ? rm_format_event_date_display($event)
         : '';
+    $thumb = rm_email_normalize_asset_url(trim((string) ($event['thumb'] ?? '')));
+    $email = trim((string) ($event['email'] ?? ''));
+    if ($email === '' && function_exists('rm_event_decode_settings')) {
+        $settings = rm_event_decode_settings($event);
+        $email = trim((string) ($settings['email'] ?? $settings['contactEmail'] ?? ''));
+    }
 
     return [
         'id'           => $event_id,
         'title'        => $title !== '' ? $title : 'Event',
-        'email'        => trim((string) ($event['email'] ?? '')),
+        'email'        => $email,
         'venue'        => $venue,
         'date_display' => $date_display,
-        'thumb'        => trim((string) ($event['thumb'] ?? '')),
+        'thumb'        => $thumb,
+        'logo_url'     => $thumb,
     ];
+}
+
+function rm_email_normalize_asset_url(string $url): string
+{
+    $url = trim($url);
+    if ($url === '') {
+        return '';
+    }
+
+    if (preg_match('#^https?://#i', $url) === 1) {
+        return esc_url_raw($url);
+    }
+
+    if (str_starts_with($url, '//')) {
+        return esc_url_raw('https:' . $url);
+    }
+
+    if (str_starts_with($url, '/')) {
+        return esc_url_raw(home_url($url));
+    }
+
+    return esc_url_raw(home_url('/' . ltrim($url, '/')));
+}
+
+/**
+ * @param array<string, mixed> $header
+ * @return array{
+ *     fields: list<array<string, mixed>>,
+ *     label_singular: string,
+ *     label_plural: string
+ * }
+ */
+function rm_email_resolve_guest_schema(array $header, int $event_id): array
+{
+    $defaults = [
+        'fields'         => [],
+        'label_singular' => 'Guest',
+        'label_plural'   => 'Guests',
+    ];
+
+    $snapshot_raw = $header['form_schema_snapshot'] ?? null;
+    $snapshot = [];
+    if (is_string($snapshot_raw) && $snapshot_raw !== '') {
+        $decoded = json_decode($snapshot_raw, true);
+        if (is_array($decoded)) {
+            $snapshot = $decoded;
+        }
+    } elseif (is_array($snapshot_raw)) {
+        $snapshot = $snapshot_raw;
+    }
+
+    if (isset($snapshot['guest']) && is_array($snapshot['guest'])) {
+        $defaults['fields'] = $snapshot['guest'];
+    }
+
+    if (isset($snapshot['guest_meta']) && is_array($snapshot['guest_meta'])) {
+        $singular = trim((string) ($snapshot['guest_meta']['label_singular'] ?? ''));
+        $plural = trim((string) ($snapshot['guest_meta']['label_plural'] ?? ''));
+        if ($singular !== '') {
+            $defaults['label_singular'] = $singular;
+        }
+        if ($plural !== '') {
+            $defaults['label_plural'] = $plural;
+        }
+    }
+
+    if ($event_id > 0 && function_exists('rm_get_event_by_id') && function_exists('rm_parse_guest_form_schema')) {
+        $source = function_exists('rm_infer_event_source') ? rm_infer_event_source($event_id) : '';
+        $event = rm_get_event_by_id($event_id, $source);
+        if ((!is_array($event) || $event === []) && $source !== 'cpt' && function_exists('rm_get_cpt_event_by_id')) {
+            $event = rm_get_cpt_event_by_id($event_id);
+        }
+        if (is_array($event) && $event !== []) {
+            $guest_schema = rm_parse_guest_form_schema($event);
+            if ($defaults['fields'] === [] && !empty($guest_schema['fields']) && is_array($guest_schema['fields'])) {
+                $defaults['fields'] = $guest_schema['fields'];
+            }
+            $singular = trim((string) ($guest_schema['label_singular'] ?? ''));
+            $plural = trim((string) ($guest_schema['label_plural'] ?? ''));
+            if ($singular !== '') {
+                $defaults['label_singular'] = $singular;
+            }
+            if ($plural !== '') {
+                $defaults['label_plural'] = $plural;
+            }
+        }
+    }
+
+    return $defaults;
+}
+
+/**
+ * @param mixed $value
+ */
+function rm_email_format_field_value(mixed $value): string
+{
+    if (is_bool($value)) {
+        return $value ? 'Yes' : 'No';
+    }
+
+    if (is_array($value)) {
+        $parts = [];
+        foreach ($value as $item) {
+            if (is_scalar($item) || $item === null) {
+                $part = trim((string) $item);
+                if ($part !== '') {
+                    $parts[] = $part;
+                }
+            }
+        }
+
+        return implode(', ', $parts);
+    }
+
+    return trim((string) $value);
+}
+
+/**
+ * Build guest display rows to match checkout (schema field labels + values).
+ *
+ * @param array<string, mixed> $line
+ * @param list<array<string, mixed>> $guest_fields
+ * @return array<string, mixed>
+ */
+function rm_email_present_guest_line(array $line, array $guest_fields, string $label_singular, int $index): array
+{
+    $person = rm_email_present_person_line($line);
+    $label_singular = trim($label_singular) !== '' ? trim($label_singular) : 'Guest';
+    $heading = $label_singular . ' ' . ($index + 1);
+    if ($person['full_name'] !== '' && $person['full_name'] !== 'Registrant') {
+        $heading .= ': ' . $person['full_name'];
+    }
+
+    $custom = [];
+    $custom_raw = $line['custom_responses'] ?? null;
+    if (is_string($custom_raw) && $custom_raw !== '') {
+        $decoded = json_decode($custom_raw, true);
+        if (is_array($decoded)) {
+            $custom = $decoded;
+        }
+    } elseif (is_array($custom_raw)) {
+        $custom = $custom_raw;
+    }
+
+    $core_columns = [
+        'nric', 'title', 'christian_name', 'given_name', 'family_name', 'certificate_name',
+        'email', 'contact', 'address1', 'address2', 'postcode', 'church_name',
+    ];
+
+    $fields = [];
+    if ($guest_fields !== []) {
+        foreach ($guest_fields as $field) {
+            if (!is_array($field)) {
+                continue;
+            }
+            $key = sanitize_key((string) ($field['key'] ?? ''));
+            if ($key === '') {
+                continue;
+            }
+
+            $label = trim((string) ($field['label'] ?? $key));
+            $value = '';
+
+            if (($field['source'] ?? 'custom') === 'core') {
+                $maps_to = (string) ($field['maps_to'] ?? $key);
+                if (in_array($maps_to, $core_columns, true)) {
+                    $value = rm_email_format_field_value($line[$maps_to] ?? '');
+                }
+            }
+
+            if ($value === '' && array_key_exists($key, $custom)) {
+                $value = rm_email_format_field_value($custom[$key]);
+            }
+
+            if ($value === '' && in_array($key, $core_columns, true)) {
+                $value = rm_email_format_field_value($line[$key] ?? '');
+            }
+
+            if ($value === '') {
+                continue;
+            }
+
+            $fields[] = [
+                'key'   => $key,
+                'label' => $label !== '' ? $label : $key,
+                'value' => $value,
+            ];
+        }
+    } else {
+        // Fallback when schema snapshot is missing: core + custom values.
+        $fallback_map = [
+            'given_name'   => 'Given name',
+            'family_name'  => 'Family name',
+            'email'        => 'Email',
+            'contact'      => 'Contact',
+            'title'        => 'Title',
+            'church_name'  => 'Church',
+        ];
+        foreach ($fallback_map as $key => $label) {
+            $value = rm_email_format_field_value($line[$key] ?? '');
+            if ($value === '') {
+                continue;
+            }
+            $fields[] = [
+                'key'   => $key,
+                'label' => $label,
+                'value' => $value,
+            ];
+        }
+        foreach ($custom as $key => $value) {
+            if (!is_string($key)) {
+                continue;
+            }
+            $display = rm_email_format_field_value($value);
+            if ($display === '') {
+                continue;
+            }
+            $fields[] = [
+                'key'   => sanitize_key($key),
+                'label' => ucwords(str_replace(['_', '-'], ' ', $key)),
+                'value' => $display,
+            ];
+        }
+    }
+
+    $person['heading'] = $heading;
+    $person['fields'] = $fields;
+    $person['role_label'] = $label_singular;
+
+    return $person;
 }
 
 /**
@@ -486,6 +756,8 @@ function rm_email_present_person_line(array $line): array
         'order_number' => trim((string) ($line['order_number'] ?? '')),
         'role'         => $role,
         'role_label'   => $role_label,
+        'heading'      => '',
+        'fields'       => [],
     ];
 }
 

@@ -84,6 +84,10 @@ function rm_v2_submit_registration(
     if ($guest_rows !== []) {
         $guest_schema = rm_parse_guest_form_schema($event);
         $schema_snapshot['guest'] = $guest_schema['fields'] ?? [];
+        $schema_snapshot['guest_meta'] = [
+            'label_singular' => (string) ($guest_schema['label_singular'] ?? 'Guest'),
+            'label_plural'   => (string) ($guest_schema['label_plural'] ?? 'Guests'),
+        ];
     }
 
     $header = [
