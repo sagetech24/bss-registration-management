@@ -6,7 +6,7 @@ $pricing_preview = is_array($pricing_preview ?? null) ? $pricing_preview : [];
 $members_input = is_array($members_input ?? null) ? $members_input : [];
 $guests_input = is_array($guests_input ?? null) ? $guests_input : [];
 $active_promotion = is_array($active_promotion ?? null) ? $active_promotion : null;
-$guest_schema = is_array($guest_schema ?? null) ? $guest_schema : ['fields' => [], 'enabled' => false, 'label_singular' => 'Guest', 'label_plural' => 'Guests', 'min' => 0, 'max' => 0, 'price' => 0];
+$guest_schema = is_array($guest_schema ?? null) ? $guest_schema : ['fields' => [], 'enabled' => false, 'label_singular' => 'Guest', 'label_plural' => 'Guests', 'min' => 0, 'max' => 0, 'event_max' => 0, 'used' => 0, 'remaining' => null, 'price' => 0];
 $event_currency = (string) ($event_currency ?? 'SGD');
 $event_coverage = rm_registration_coverage($registration_config);
 $phone_country_codes = rm_phone_country_codes();
@@ -253,9 +253,20 @@ $phone_fixed_class = 'inline-flex items-center rounded-l-lg border border-r-0 bo
 
                 <template x-if="guestSchema.enabled">
                     <div class="space-y-2 mb-2">
-                        <h3 class="text-md font-medium text-slate-700"><span x-text="guestSchema.label_plural || 'Guests'"></span> Registration Add-On</h3>
+                        <h3 class="text-md font-medium text-slate-700">
+                            <span x-text="guestSchema.label_plural || 'Guests'"></span>
+                            Registration Add-On
+                        </h3>
                         <p class="text-sm text-slate-500" x-show="!isIndividual">
                             Event package allows to register <span x-text="guestSchema.label_plural || 'Guests'"></span>. Please fill up the additional information below
+                        </p>
+                        <p
+                            class="text-sm text-slate-500"
+                            x-show="guestSchema.event_max > 0 && guestSchema.remaining !== null && guestSchema.remaining > 0 && guestSchema.remaining < guestSchema.event_max"
+                            x-cloak
+                        >
+                            <span x-text="guestSchema.remaining"></span> of <span x-text="guestSchema.event_max"></span>
+                            <span x-text="(guestSchema.label_plural || 'guest').toLowerCase()"></span> slot(s) remaining for this event.
                         </p>
                         <fieldset class="rounded-lg border border-slate-200 p-4 space-y-4">
                             <legend class="text-sm font-medium text-slate-700 px-1">
@@ -453,7 +464,7 @@ function rmRegisterWizard() {
             return 'Event package allows to register ' + addonName + '. Kindly fill-up the additional information below.' + optional;
         },
         schema: { fields: [] },
-        guestSchema: { fields: [], enabled: false, label_singular: 'Guest', label_plural: 'Guests', min: 0, max: 0, price: 0 },
+        guestSchema: { fields: [], enabled: false, label_singular: 'Guest', label_plural: 'Guests', min: 0, max: 0, event_max: 0, used: 0, remaining: null, price: 0 },
         limits: { min: 1, max: 1, require_all_members: false },
         members: [],
         guests: [],

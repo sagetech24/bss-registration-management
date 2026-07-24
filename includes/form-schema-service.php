@@ -385,6 +385,10 @@ function rm_parse_guest_form_schema(array $event): array
 {
     $config = rm_parse_registration_config($event);
     $guests = $config['guests'];
+    $capacity = rm_guest_event_capacity($event);
+    $event_max = (int) ($capacity['event_max'] ?? 0);
+    $used = (int) ($capacity['used'] ?? 0);
+    $remaining = $capacity['remaining'];
 
     if (empty($guests['enabled'])) {
         return [
@@ -394,6 +398,9 @@ function rm_parse_guest_form_schema(array $event): array
             'label_plural'   => 'Guests',
             'min'            => 0,
             'max'            => 0,
+            'event_max'      => $event_max,
+            'used'           => $used,
+            'remaining'      => $remaining,
             'price'          => 0.0,
         ];
     }
@@ -406,13 +413,37 @@ function rm_parse_guest_form_schema(array $event): array
         return ((int) ($a['order'] ?? 0)) <=> ((int) ($b['order'] ?? 0));
     });
 
+    $min = (int) ($guests['min'] ?? 0);
+    $max = (int) ($guests['max'] ?? 0);
+    $enabled = true;
+
+    if ($remaining !== null) {
+        if ($max > 0) {
+            $max = min($max, $remaining);
+        } else {
+            $max = $remaining;
+        }
+        if ($remaining < $min) {
+            $min = 0;
+        }
+        if ($remaining <= 0) {
+            // Hide the guest add-on step entirely when event capacity is full.
+            $enabled = false;
+            $min = 0;
+            $max = 0;
+        }
+    }
+
     return [
         'fields'         => $fields,
-        'enabled'        => true,
+        'enabled'        => $enabled,
         'label_singular' => (string) ($guests['label_singular'] ?? 'Guest'),
         'label_plural'   => (string) ($guests['label_plural'] ?? 'Guests'),
-        'min'            => (int) ($guests['min'] ?? 0),
-        'max'            => (int) ($guests['max'] ?? 0),
+        'min'            => $min,
+        'max'            => $max,
+        'event_max'      => $event_max,
+        'used'           => $used,
+        'remaining'      => $remaining,
         'price'          => (float) ($guests['price'] ?? 0),
     ];
 }
