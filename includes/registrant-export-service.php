@@ -5,25 +5,6 @@
  */
 
 /**
- * @param mixed $snapshot
- * @return array<string, mixed>
- */
-function rm_export_decode_pricing_snapshot($snapshot): array
-{
-    if (is_array($snapshot)) {
-        return $snapshot;
-    }
-
-    if (!is_string($snapshot) || $snapshot === '') {
-        return [];
-    }
-
-    $decoded = json_decode($snapshot, true);
-
-    return is_array($decoded) ? $decoded : [];
-}
-
-/**
  * @param mixed $custom
  * @return array<string, mixed>
  */
@@ -44,6 +25,10 @@ function rm_export_decode_custom_responses($custom): array
 
 /**
  * Spreadsheet-safe flat row with stable key order. Custom response keys are appended.
+ *
+ * Column order starts with created_at, then order_number.
+ * Excludes: registrant_id, registration_id, member_index, package_slug,
+ * event_promotion_id, email_sent, confirmation_number.
  *
  * @param array<string, mixed> $registrant Normalized v2 registrant row
  * @param array<string, mixed> $header     Header fields used during normalize (snapshot etc.)
@@ -66,49 +51,34 @@ function rm_present_export_registrant_row(array $registrant, array $header = [])
         $package_label = $promotion_id > 0 ? 'Package #' . $promotion_id : 'Individual';
     }
 
-    $snapshot = rm_export_decode_pricing_snapshot($header['pricing_snapshot'] ?? ($registrant['_pricing_snapshot'] ?? null));
-    $package_slug = null;
-    if ($promotion_id > 0) {
-        $slug = trim((string) ($snapshot['package_slug'] ?? ''));
-        $package_slug = $slug !== '' ? $slug : null;
-    }
-
     $payment_status = trim((string) ($registrant['_payment_status'] ?? ''));
-    $email_sent = ((string) ($registrant['isEmailConfirmationSent'] ?? '0')) === '1';
 
     $row = [
-        'registrant_id'       => isset($registrant['id']) ? (int) $registrant['id'] : 0,
-        'registration_id'     => isset($registrant['_registration_id']) ? (int) $registrant['_registration_id'] : 0,
-        'role'                => (string) ($registrant['_role'] ?? ''),
-        'member_index'        => isset($registrant['_member_index']) ? (int) $registrant['_member_index'] : 0,
-        'full_name'           => $full_name,
-        'title'               => trim((string) ($registrant['title'] ?? '')),
-        'christian_name'      => $christian_name,
-        'given_name'          => $given_name,
-        'family_name'         => $family_name,
-        'certificate_name'    => trim((string) ($registrant['certificateName'] ?? '')),
-        'email'               => trim((string) ($registrant['email'] ?? '')),
-        'contact'             => trim((string) ($registrant['contact'] ?? '')),
-        'nric'                => trim((string) ($registrant['nric'] ?? '')),
-        'address1'            => trim((string) ($registrant['address1'] ?? '')),
-        'address2'            => trim((string) ($registrant['address2'] ?? '')),
-        'postcode'            => trim((string) ($registrant['postcode'] ?? '')),
-        'church_name'         => trim((string) ($registrant['churchName'] ?? '')),
-        'order_number'        => trim((string) ($registrant['orderNumber'] ?? '')),
-        'confirmation_number' => trim((string) ($registrant['confirmationNumber'] ?? '')),
-        'package_label'       => $package_label,
-        'package_slug'        => $package_slug,
-        'event_promotion_id'  => $promotion_id > 0 ? $promotion_id : null,
-        'payment_status'      => $payment_status,
-        'payment_option'      => trim((string) ($registrant['paymentOption'] ?? 'N/A')),
-        'payment_request_id'  => isset($registrant['payment']) && $registrant['payment'] !== null && $registrant['payment'] !== ''
+        'created_at'         => trim((string) ($registrant['datestamp'] ?? '')),
+        'order_number'       => trim((string) ($registrant['orderNumber'] ?? '')),
+        'role'               => (string) ($registrant['_role'] ?? ''),
+        'full_name'          => $full_name,
+        'title'              => trim((string) ($registrant['title'] ?? '')),
+        'christian_name'     => $christian_name,
+        'given_name'         => $given_name,
+        'family_name'        => $family_name,
+        'certificate_name'   => trim((string) ($registrant['certificateName'] ?? '')),
+        'email'              => trim((string) ($registrant['email'] ?? '')),
+        'contact'            => trim((string) ($registrant['contact'] ?? '')),
+        'nric'               => trim((string) ($registrant['nric'] ?? '')),
+        'address1'           => trim((string) ($registrant['address1'] ?? '')),
+        'address2'           => trim((string) ($registrant['address2'] ?? '')),
+        'postcode'           => trim((string) ($registrant['postcode'] ?? '')),
+        'church_name'        => trim((string) ($registrant['churchName'] ?? '')),
+        'package_label'      => $package_label,
+        'payment_status'     => $payment_status,
+        'payment_option'     => trim((string) ($registrant['paymentOption'] ?? 'N/A')),
+        'payment_request_id' => isset($registrant['payment']) && $registrant['payment'] !== null && $registrant['payment'] !== ''
             ? trim((string) $registrant['payment'])
             : null,
-        'amount'              => isset($registrant['amount']) ? (float) $registrant['amount'] : 0.0,
-        'total_amount'        => isset($registrant['_header_total']) ? (float) $registrant['_header_total'] : 0.0,
-        'registered_at'       => trim((string) ($registrant['datestamp'] ?? '')),
-        'email_sent'          => $email_sent,
-        'status'              => trim((string) ($registrant['_status'] ?? '')),
+        'amount'             => isset($registrant['amount']) ? (float) $registrant['amount'] : 0.0,
+        'total_amount'       => isset($registrant['_header_total']) ? (float) $registrant['_header_total'] : 0.0,
+        'status'             => trim((string) ($registrant['_status'] ?? '')),
     ];
 
     $custom = rm_export_decode_custom_responses($registrant['note'] ?? null);
@@ -140,51 +110,44 @@ function rm_group_export_rows_by_package(array $export_rows): array
             continue;
         }
 
-        $promotion_id = isset($row['event_promotion_id']) ? (int) $row['event_promotion_id'] : 0;
-        $key = $promotion_id > 0 ? (string) $promotion_id : 'individual';
         $label = trim((string) ($row['package_label'] ?? ''));
         if ($label === '') {
-            $label = $promotion_id > 0 ? 'Package #' . $promotion_id : 'Individual';
+            $label = 'Individual';
         }
-        $slug = $row['package_slug'] ?? null;
-        if (is_string($slug)) {
-            $slug = trim($slug);
-            $slug = $slug !== '' ? $slug : null;
-        } else {
-            $slug = null;
+        $key = strtolower($label) === 'individual' ? 'individual' : sanitize_title($label);
+        if ($key === '') {
+            $key = 'package';
         }
 
         if (!isset($buckets[$key])) {
             $buckets[$key] = [
-                'key'                 => $key,
-                'event_promotion_id'  => $promotion_id > 0 ? $promotion_id : null,
-                'slug'                => $slug,
-                'label'               => $label,
-                'people_count'        => 0,
-                'registration_ids'    => [],
-                'registrants'         => [],
+                'key'              => $key,
+                'label'            => $label,
+                'people_count'     => 0,
+                'order_numbers'    => [],
+                'registrants'      => [],
             ];
         }
 
         $buckets[$key]['people_count']++;
         $buckets[$key]['registrants'][] = $row;
 
-        $registration_id = isset($row['registration_id']) ? (int) $row['registration_id'] : 0;
-        if ($registration_id > 0) {
-            $buckets[$key]['registration_ids'][$registration_id] = true;
+        $order_number = trim((string) ($row['order_number'] ?? ''));
+        if ($order_number !== '') {
+            $buckets[$key]['order_numbers'][$order_number] = true;
         }
     }
 
     $out = [];
     foreach ($buckets as $bucket) {
         $out[] = [
-            'key'                 => $bucket['key'],
-            'event_promotion_id'  => $bucket['event_promotion_id'],
-            'slug'                => $bucket['slug'],
-            'label'               => $bucket['label'],
-            'people_count'        => $bucket['people_count'],
-            'registration_count'  => count($bucket['registration_ids']),
-            'registrants'         => $bucket['registrants'],
+            'key'                => $bucket['key'],
+            'label'              => $bucket['label'],
+            'people_count'       => $bucket['people_count'],
+            'registration_count' => count($bucket['order_numbers']) > 0
+                ? count($bucket['order_numbers'])
+                : $bucket['people_count'],
+            'registrants'        => $bucket['registrants'],
         ];
     }
 
