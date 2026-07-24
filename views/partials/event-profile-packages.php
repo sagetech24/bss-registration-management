@@ -1,6 +1,7 @@
 <?php
 $profile_form_action = rm_event_profile_url($selected_event_code, $selected_event_id, ['tab' => 'packages']);
 $promotions = is_array($promotions ?? null) ? $promotions : [];
+$deleted_promotions = is_array($deleted_promotions ?? null) ? $deleted_promotions : [];
 $uses_v2 = !empty($uses_v2);
 
 $promotions_json = [];
@@ -246,7 +247,6 @@ document.addEventListener('alpine:init', () => {
                                 <?php else : ?>
                                     <div class="font-medium text-slate-900"><?php echo esc_html((string) ($promo['title'] ?? '')); ?></div>
                                 <?php endif; ?>
-                                <!-- <div class="text-xs text-slate-500 mt-0.5">slug: <?php //echo esc_html((string) ($promo['slug'] ?? '')); ?></div> -->
                             </td>
                             <td class="px-4 py-3 text-slate-700"><?php echo esc_html((string) ($promo['registration_mode_label'] ?? $promo['registration_mode'] ?? '')); ?></td>
                             <td class="px-4 py-3 text-slate-700"><?php echo esc_html((string) ($promo['member_rule'] ?? '')); ?></td>
@@ -269,20 +269,81 @@ document.addEventListener('alpine:init', () => {
                             </td>
                             <td class="px-4 py-3 text-right whitespace-nowrap">
                                 <button type="button" class="text-xs font-medium text-indigo-700 hover:text-indigo-900" @click="openEdit(<?php echo (int) ($promo['id'] ?? 0); ?>)">Edit</button>
-                                <span class="text-slate-600">|</span>
+                                <span class="text-slate-300">|</span>
                                 <form method="post" action="<?php echo esc_url($profile_form_action); ?>" class="inline">
                                     <input type="hidden" name="rm_action" value="<?php echo !empty($promo['is_active']) ? 'deactivate_promotion' : 'activate_promotion'; ?>" />
                                     <input type="hidden" name="promotion_id" value="<?php echo esc_attr((string) (int) ($promo['id'] ?? 0)); ?>" />
                                     <?php wp_nonce_field('rm_event_profile', 'rm_event_profile_nonce'); ?>
-                                    <button type="submit" class="text-xs font-medium text-slate-600 hover:text-slate-900 <?php echo !empty($promo['is_active']) ? 'text-red-700 hover:text-red-900' : 'text-emerald-700 hover:text-emerald-900'; ?>">
+                                    <button type="submit" class="text-xs font-medium <?php echo !empty($promo['is_active']) ? 'text-amber-700 hover:text-amber-900' : 'text-emerald-700 hover:text-emerald-900'; ?>">
                                         <?php echo !empty($promo['is_active']) ? 'Deactivate' : 'Activate'; ?>
                                     </button>
+                                </form>
+                                <span class="text-slate-300">|</span>
+                                <form
+                                    method="post"
+                                    action="<?php echo esc_url($profile_form_action); ?>"
+                                    class="inline"
+                                    onsubmit="return confirm('Delete this package? Existing registrations keep their package history. You can restore it later.');"
+                                >
+                                    <input type="hidden" name="rm_action" value="delete_promotion" />
+                                    <input type="hidden" name="promotion_id" value="<?php echo esc_attr((string) (int) ($promo['id'] ?? 0)); ?>" />
+                                    <?php wp_nonce_field('rm_event_profile', 'rm_event_profile_nonce'); ?>
+                                    <button type="submit" class="text-xs font-medium text-red-700 hover:text-red-900">Delete</button>
                                 </form>
                             </td>
                         </tr>
                     <?php endforeach; ?>
                 </tbody>
             </table>
+        </div>
+    <?php endif; ?>
+
+    <?php if ($uses_v2 && $deleted_promotions !== []) : ?>
+        <div class="border-t border-slate-200" x-data="{ open: false }">
+            <button
+                type="button"
+                class="w-full px-5 py-3 flex items-center justify-between text-left text-sm font-medium text-slate-700 hover:bg-slate-50"
+                @click="open = !open"
+            >
+                <span>Deleted packages (<?php echo count($deleted_promotions); ?>)</span>
+                <span class="text-slate-400" x-text="open ? 'Hide' : 'Show'"></span>
+            </button>
+            <div x-show="open" x-cloak class="overflow-x-auto border-t border-slate-100" style="display: none;">
+                <table class="min-w-full text-sm">
+                    <thead class="bg-slate-50 text-left text-xs uppercase tracking-wider text-slate-500">
+                        <tr>
+                            <th class="px-4 py-3 font-medium">Package</th>
+                            <th class="px-4 py-3 font-medium">Mode</th>
+                            <th class="px-4 py-3 font-medium">Price</th>
+                            <th class="px-4 py-3 font-medium">Deleted</th>
+                            <th class="px-4 py-3 font-medium text-right">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-slate-100">
+                        <?php foreach ($deleted_promotions as $promo) : ?>
+                            <?php if (!is_array($promo)) {
+                                continue;
+                            } ?>
+                            <tr class="align-top bg-slate-50/60">
+                                <td class="px-4 py-3">
+                                    <div class="font-medium text-slate-600"><?php echo esc_html((string) ($promo['title'] ?? '')); ?></div>
+                                </td>
+                                <td class="px-4 py-3 text-slate-500"><?php echo esc_html((string) ($promo['registration_mode_label'] ?? $promo['registration_mode'] ?? '')); ?></td>
+                                <td class="px-4 py-3 text-slate-600"><?php echo esc_html((string) ($promo['price_display'] ?? '')); ?></td>
+                                <td class="px-4 py-3 text-slate-500 text-xs"><?php echo esc_html((string) ($promo['deleted_at_display'] ?? '—')); ?></td>
+                                <td class="px-4 py-3 text-right whitespace-nowrap">
+                                    <form method="post" action="<?php echo esc_url($profile_form_action); ?>" class="inline">
+                                        <input type="hidden" name="rm_action" value="restore_promotion" />
+                                        <input type="hidden" name="promotion_id" value="<?php echo esc_attr((string) (int) ($promo['id'] ?? 0)); ?>" />
+                                        <?php wp_nonce_field('rm_event_profile', 'rm_event_profile_nonce'); ?>
+                                        <button type="submit" class="text-xs font-medium text-emerald-700 hover:text-emerald-900">Restore</button>
+                                    </form>
+                                </td>
+                            </tr>
+                        <?php endforeach; ?>
+                    </tbody>
+                </table>
+            </div>
         </div>
     <?php endif; ?>
 

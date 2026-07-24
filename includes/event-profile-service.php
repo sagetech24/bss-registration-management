@@ -162,6 +162,12 @@ function rm_handle_event_profile_post(): void
     } elseif ($rm_action === 'activate_promotion') {
         $result = rm_handle_set_promotion_active_post($event_id, true, $event_source);
         $redirect_tab = 'packages';
+    } elseif ($rm_action === 'delete_promotion') {
+        $result = rm_handle_delete_promotion_post($event_id, $event_source);
+        $redirect_tab = 'packages';
+    } elseif ($rm_action === 'restore_promotion') {
+        $result = rm_handle_restore_promotion_post($event_id, $event_source);
+        $redirect_tab = 'packages';
     } else {
         $result = [
             'ok'    => false,
@@ -346,6 +352,44 @@ function rm_handle_set_promotion_active_post(int $event_id, bool $is_active, str
 }
 
 /**
+ * @return array{ok: bool, error: string, message?: string}
+ */
+function rm_handle_delete_promotion_post(int $event_id, string $source = ''): array
+{
+    unset($source);
+    $promotion_id = isset($_POST['promotion_id']) ? absint($_POST['promotion_id']) : 0;
+    $result = rm_soft_delete_event_promotion($promotion_id, $event_id);
+    if (!$result['ok']) {
+        return $result;
+    }
+
+    return [
+        'ok'      => true,
+        'error'   => '',
+        'message' => 'Package deleted.',
+    ];
+}
+
+/**
+ * @return array{ok: bool, error: string, message?: string}
+ */
+function rm_handle_restore_promotion_post(int $event_id, string $source = ''): array
+{
+    unset($source);
+    $promotion_id = isset($_POST['promotion_id']) ? absint($_POST['promotion_id']) : 0;
+    $result = rm_restore_event_promotion($promotion_id, $event_id);
+    if (!$result['ok']) {
+        return $result;
+    }
+
+    return [
+        'ok'      => true,
+        'error'   => '',
+        'message' => 'Package restored (inactive). Activate it when ready.',
+    ];
+}
+
+/**
  * @param array<string, array<int, array<string, mixed>>> $events_by_year
  * @return array<string, mixed>
  */
@@ -475,13 +519,15 @@ function rm_build_event_profile_context(array $events_by_year, string $requested
         }
     }
 
-    $promotions_raw = $event_id > 0 ? rm_list_event_promotions($event_id, false) : [];
+    $event_currency = rm_registration_currency($selected_event);
+    $promotions_raw = $event_id > 0 ? rm_list_event_promotions($event_id, false, true) : [];
     $promotions = [];
+    $deleted_promotions = [];
     $active_package_count = 0;
     foreach ($promotions_raw as $promotion) {
         $promotion['_currency'] = $event_currency;
         $present = rm_present_event_promotion($promotion, $selected_event);
-        $present['package_href'] = $selected_event_code !== ''
+        $present['package_href'] = $selected_event_code !== '' && empty($present['is_deleted'])
             ? rm_registration_url([
                 'event_code' => $selected_event_code,
                 'package'    => $present['slug'],
@@ -495,6 +541,13 @@ function rm_build_event_profile_context(array $events_by_year, string $requested
         $present['valid_until_display'] = !empty($present['valid_until'])
             ? rm_format_payment_transaction_datetime((string) $present['valid_until'])
             : '—';
+        $present['deleted_at_display'] = !empty($present['deleted_at'])
+            ? rm_format_payment_transaction_datetime((string) $present['deleted_at'])
+            : '—';
+        if (!empty($present['is_deleted'])) {
+            $deleted_promotions[] = $present;
+            continue;
+        }
         if ($present['is_active']) {
             $active_package_count++;
         }
@@ -505,7 +558,6 @@ function rm_build_event_profile_context(array $events_by_year, string $requested
     $price_num = function_exists('rm_event_registration_price')
         ? rm_event_registration_price($selected_event)
         : (float) ($selected_event['price'] ?? 0);
-    $event_currency = rm_registration_currency($selected_event);
     $price_display = rm_format_currency($price_num, $event_currency);
 
     return [
@@ -521,6 +573,7 @@ function rm_build_event_profile_context(array $events_by_year, string $requested
         'registration_config'         => $registration_config,
         'registration_config_present' => rm_present_registration_config($registration_config),
         'promotions'                  => $promotions,
+        'deleted_promotions'          => $deleted_promotions,
         'active_package_count'        => $active_package_count,
         'summary'                     => $summary,
         'package_summary'             => $package_summary,

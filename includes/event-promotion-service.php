@@ -3,7 +3,7 @@
 /**
  * @return array<string, mixed>|null
  */
-function rm_fetch_event_promotion(int $event_id, string $slug): ?array
+function rm_fetch_event_promotion(int $event_id, string $slug, bool $include_deleted = false): ?array
 {
     global $wpdb;
 
@@ -12,14 +12,18 @@ function rm_fetch_event_promotion(int $event_id, string $slug): ?array
         return null;
     }
 
+    $sql = 'SELECT * FROM `event_promotions`
+             WHERE `event_id` = %d AND `slug` = %s';
+    $params = [$event_id, $slug];
+
+    if (!$include_deleted) {
+        $sql .= ' AND `deleted_at` IS NULL';
+    }
+
+    $sql .= ' LIMIT 1';
+
     $row = $wpdb->get_row(
-        $wpdb->prepare(
-            'SELECT * FROM `event_promotions`
-             WHERE `event_id` = %d AND `slug` = %s
-             LIMIT 1',
-            $event_id,
-            $slug
-        ),
+        $wpdb->prepare($sql, ...$params),
         ARRAY_A
     );
 
@@ -64,7 +68,7 @@ function rm_fetch_event_promotion_by_id(int $promotion_id, int $event_id = 0): ?
 /**
  * @return list<array<string, mixed>>
  */
-function rm_list_event_promotions(int $event_id, bool $active_only = true): array
+function rm_list_event_promotions(int $event_id, bool $active_only = true, bool $include_deleted = false): array
 {
     global $wpdb;
 
@@ -74,6 +78,10 @@ function rm_list_event_promotions(int $event_id, bool $active_only = true): arra
 
     $sql = 'SELECT * FROM `event_promotions` WHERE `event_id` = %d';
     $params = [$event_id];
+
+    if (!$include_deleted) {
+        $sql .= ' AND `deleted_at` IS NULL';
+    }
 
     if ($active_only) {
         $sql .= ' AND `is_active` = 1';
@@ -143,6 +151,8 @@ function rm_normalize_event_promotion_row(array $row): array
         'valid_until'         => $row['valid_until'] ?? null,
         'is_active'           => !empty($row['is_active']),
         'sort_order'          => isset($row['sort_order']) ? (int) $row['sort_order'] : 0,
+        'deleted_at'          => !empty($row['deleted_at']) ? (string) $row['deleted_at'] : null,
+        'is_deleted'          => !empty($row['deleted_at']),
     ];
 }
 
@@ -152,6 +162,13 @@ function rm_normalize_event_promotion_row(array $row): array
  */
 function rm_validate_event_promotion(array $promotion): array
 {
+    if (!empty($promotion['is_deleted']) || !empty($promotion['deleted_at'])) {
+        return [
+            'ok'    => false,
+            'error' => 'This registration package is not available.',
+        ];
+    }
+
     if (empty($promotion['is_active'])) {
         return [
             'ok'    => false,
@@ -358,6 +375,8 @@ function rm_present_event_promotion(array $promotion, ?array $event = null): arr
         'registration_mode'   => $mode,
         'registration_mode_label' => $mode_labels[$mode] ?? $mode,
         'is_active'           => !empty($promotion['is_active']),
+        'is_deleted'          => !empty($promotion['is_deleted']) || !empty($promotion['deleted_at']),
+        'deleted_at'          => $promotion['deleted_at'] ?? null,
         'valid_from'          => $promotion['valid_from'] ?? null,
         'valid_until'         => $promotion['valid_until'] ?? null,
         'sort_order'          => (int) ($promotion['sort_order'] ?? 0),
@@ -584,6 +603,13 @@ function rm_update_event_promotion(int $promotion_id, int $event_id, array $inpu
         ];
     }
 
+    if (!empty($current['is_deleted'])) {
+        return [
+            'ok'    => false,
+            'error' => 'Restore this package before editing it.',
+        ];
+    }
+
     $normalized = rm_normalize_event_promotion_input($input, $event_id);
     if (!$normalized['ok']) {
         return [
@@ -661,6 +687,13 @@ function rm_set_event_promotion_active(int $promotion_id, int $event_id, bool $i
         ];
     }
 
+    if (!empty($current['is_deleted'])) {
+        return [
+            'ok'    => false,
+            'error' => 'Restore this package before changing its status.',
+        ];
+    }
+
     $updated = $wpdb->update(
         'event_promotions',
         ['is_active' => $is_active ? 1 : 0],
@@ -683,6 +716,177 @@ function rm_set_event_promotion_active(int $promotion_id, int $event_id, bool $i
         'ok'    => true,
         'error' => '',
     ];
+}
+
+/**
+ * Soft-delete a package. Frees the slug so it can be reused; row stays for registration history.
+ *
+ * @return array{ok: bool, error: string}
+ */
+function rm_soft_delete_event_promotion(int $promotion_id, int $event_id): array
+{
+    global $wpdb;
+
+    if ($promotion_id < 1 || $event_id < 1) {
+        return [
+            'ok'    => false,
+            'error' => 'Invalid package id.',
+        ];
+    }
+
+    $current = rm_fetch_event_promotion_by_id($promotion_id, $event_id);
+    if ($current === null) {
+        return [
+            'ok'    => false,
+            'error' => 'Package could not be found.',
+        ];
+    }
+
+    if (!empty($current['is_deleted'])) {
+        return [
+            'ok'    => true,
+            'error' => '',
+        ];
+    }
+
+    $deleted_slug = rm_promotion_deleted_slug((string) ($current['slug'] ?? ''), $promotion_id);
+    $updated = $wpdb->update(
+        'event_promotions',
+        [
+            'slug'       => $deleted_slug,
+            'is_active'  => 0,
+            'deleted_at' => current_time('mysql'),
+        ],
+        [
+            'id'       => $promotion_id,
+            'event_id' => $event_id,
+        ],
+        ['%s', '%d', '%s'],
+        ['%d', '%d']
+    );
+
+    if ($updated === false) {
+        return [
+            'ok'    => false,
+            'error' => $wpdb->last_error !== '' ? $wpdb->last_error : 'Failed to delete package.',
+        ];
+    }
+
+    return [
+        'ok'    => true,
+        'error' => '',
+    ];
+}
+
+/**
+ * Restore a soft-deleted package. Leaves it inactive so staff can review before publishing.
+ *
+ * @return array{ok: bool, error: string}
+ */
+function rm_restore_event_promotion(int $promotion_id, int $event_id): array
+{
+    global $wpdb;
+
+    if ($promotion_id < 1 || $event_id < 1) {
+        return [
+            'ok'    => false,
+            'error' => 'Invalid package id.',
+        ];
+    }
+
+    $current = rm_fetch_event_promotion_by_id($promotion_id, $event_id);
+    if ($current === null) {
+        return [
+            'ok'    => false,
+            'error' => 'Package could not be found.',
+        ];
+    }
+
+    if (empty($current['is_deleted'])) {
+        return [
+            'ok'    => true,
+            'error' => '',
+        ];
+    }
+
+    $restored_slug = rm_promotion_original_slug_from_deleted(
+        (string) ($current['slug'] ?? ''),
+        $promotion_id
+    );
+    if ($restored_slug === '') {
+        return [
+            'ok'    => false,
+            'error' => 'Could not restore package slug.',
+        ];
+    }
+
+    $slug_owner = rm_fetch_event_promotion($event_id, $restored_slug);
+    if ($slug_owner !== null && (int) $slug_owner['id'] !== $promotion_id) {
+        return [
+            'ok'    => false,
+            'error' => 'Another package already uses this slug. Rename or delete that package first.',
+        ];
+    }
+
+    $updated = $wpdb->query(
+        $wpdb->prepare(
+            'UPDATE `event_promotions`
+             SET `slug` = %s, `deleted_at` = NULL, `is_active` = 0
+             WHERE `id` = %d AND `event_id` = %d',
+            $restored_slug,
+            $promotion_id,
+            $event_id
+        )
+    );
+
+    if ($updated === false) {
+        return [
+            'ok'    => false,
+            'error' => $wpdb->last_error !== '' ? $wpdb->last_error : 'Failed to restore package.',
+        ];
+    }
+
+    return [
+        'ok'    => true,
+        'error' => '',
+    ];
+}
+
+/**
+ * Slug used while a package is soft-deleted so the original slug can be reused.
+ */
+function rm_promotion_deleted_slug(string $slug, int $promotion_id): string
+{
+    $suffix = '__del' . max(0, $promotion_id);
+    $base = rm_sanitize_package_slug($slug);
+    if ($base === '') {
+        $base = 'package';
+    }
+
+    if (substr($base, -strlen($suffix)) === $suffix) {
+        return substr($base, 0, 64);
+    }
+
+    $max_base = 64 - strlen($suffix);
+    if ($max_base < 1) {
+        return substr($suffix, 0, 64);
+    }
+
+    return substr($base, 0, $max_base) . $suffix;
+}
+
+/**
+ * Recover the public slug from a soft-deleted package slug.
+ */
+function rm_promotion_original_slug_from_deleted(string $slug, int $promotion_id): string
+{
+    $suffix = '__del' . max(0, $promotion_id);
+    $slug = rm_sanitize_package_slug($slug);
+    if ($slug !== '' && substr($slug, -strlen($suffix)) === $suffix) {
+        return substr($slug, 0, -strlen($suffix));
+    }
+
+    return $slug;
 }
 
 /**

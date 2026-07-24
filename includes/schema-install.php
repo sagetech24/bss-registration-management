@@ -157,9 +157,11 @@ function rm_install_event_promotions_schema(): array
             `sort_order` SMALLINT UNSIGNED NOT NULL DEFAULT 0,
             `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
             `updated_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+            `deleted_at` DATETIME NULL DEFAULT NULL,
             PRIMARY KEY (`id`),
             UNIQUE KEY `uq_event_slug` (`event_id`, `slug`),
-            KEY `idx_event_active` (`event_id`, `is_active`, `valid_until`)
+            KEY `idx_event_active` (`event_id`, `is_active`, `valid_until`),
+            KEY `idx_event_deleted` (`event_id`, `deleted_at`)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci';
 
         $result = $wpdb->query($sql);
@@ -191,6 +193,26 @@ function rm_install_event_promotions_schema(): array
             ];
         }
         $created[] = 'event_promotions.compare_at_price';
+    }
+
+    if (rm_schema_table_exists('event_promotions')
+        && !rm_schema_column_exists('event_promotions', 'deleted_at')
+    ) {
+        $alter_deleted = $wpdb->query(
+            'ALTER TABLE `event_promotions`
+             ADD COLUMN `deleted_at` DATETIME NULL DEFAULT NULL AFTER `updated_at`,
+             ADD KEY `idx_event_deleted` (`event_id`, `deleted_at`)'
+        );
+        if ($alter_deleted === false) {
+            return [
+                'ok'      => false,
+                'error'   => $wpdb->last_error !== ''
+                    ? $wpdb->last_error
+                    : 'Failed to add deleted_at to event_promotions.',
+                'created' => $created,
+            ];
+        }
+        $created[] = 'event_promotions.deleted_at';
     }
 
     foreach (['event_registration', 'event_registration_pendings'] as $table) {
@@ -320,6 +342,10 @@ function rm_event_promotions_schema_ready(): bool
     }
 
     if (!rm_schema_column_exists('event_promotions', 'compare_at_price')) {
+        return false;
+    }
+
+    if (!rm_schema_column_exists('event_promotions', 'deleted_at')) {
         return false;
     }
 
