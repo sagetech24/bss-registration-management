@@ -13,6 +13,7 @@ require_once __DIR__ . '/includes/auth.php';
 require_once __DIR__ . '/includes/api-client.php';
 require_once __DIR__ . '/includes/event-service.php';
 require_once __DIR__ . '/includes/registrant-service.php';
+require_once __DIR__ . '/includes/registrant-export-service.php';
 require_once __DIR__ . '/includes/registration-service.php';
 require_once __DIR__ . '/includes/payment-service.php';
 require_once __DIR__ . '/includes/email-service.php';
@@ -31,6 +32,8 @@ if (rm_event_registration_tables_exist() === false) {
     rm_install_event_registration_tables();
 } elseif (rm_event_promotions_schema_ready() === false) {
     rm_install_event_promotions_schema();
+} elseif (rm_event_registrant_reported_schema_ready() === false) {
+    rm_install_event_registrant_reported_schema();
 }
 
 rm_legacy_redirect_bootstrap();

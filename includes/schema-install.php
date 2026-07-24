@@ -58,10 +58,71 @@ function rm_install_event_registration_tables(): array
         ];
     }
 
+    $reported_install = rm_install_event_registrant_reported_schema();
+    if (!$reported_install['ok']) {
+        return [
+            'ok'      => false,
+            'error'   => $reported_install['error'],
+            'created' => array_merge($created, $promo_install['created'], $reported_install['created']),
+        ];
+    }
+
     return [
         'ok'      => true,
         'error'   => '',
-        'created' => array_merge($created, $promo_install['created']),
+        'created' => array_merge($created, $promo_install['created'], $reported_install['created']),
+    ];
+}
+
+/**
+ * Idempotent install of event_registrant.reported export cursor.
+ *
+ * @return array{ok: bool, error: string, created: list<string>}
+ */
+function rm_install_event_registrant_reported_schema(): array
+{
+    global $wpdb;
+
+    $created = [];
+
+    if (!rm_schema_table_exists('event_registrant')) {
+        return [
+            'ok'      => true,
+            'error'   => '',
+            'created' => $created,
+        ];
+    }
+
+    if (rm_schema_column_exists('event_registrant', 'reported')) {
+        return [
+            'ok'      => true,
+            'error'   => '',
+            'created' => $created,
+        ];
+    }
+
+    $alter = $wpdb->query(
+        'ALTER TABLE `event_registrant`
+         ADD COLUMN `reported` TINYINT(1) NOT NULL DEFAULT 0 AFTER `status`,
+         ADD KEY `idx_event_reported` (`event_id`, `reported`)'
+    );
+
+    if ($alter === false) {
+        return [
+            'ok'      => false,
+            'error'   => $wpdb->last_error !== ''
+                ? $wpdb->last_error
+                : 'Failed to add reported column to event_registrant.',
+            'created' => $created,
+        ];
+    }
+
+    $created[] = 'event_registrant.reported';
+
+    return [
+        'ok'      => true,
+        'error'   => '',
+        'created' => $created,
     ];
 }
 
@@ -268,4 +329,13 @@ function rm_event_promotions_schema_ready(): bool
 
     return rm_schema_column_exists('event_registration', 'event_promotion_id')
         && rm_schema_column_exists('event_registration_pendings', 'event_promotion_id');
+}
+
+/**
+ * @return bool
+ */
+function rm_event_registrant_reported_schema_ready(): bool
+{
+    return rm_schema_table_exists('event_registrant')
+        && rm_schema_column_exists('event_registrant', 'reported');
 }
