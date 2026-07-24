@@ -81,76 +81,13 @@ The base URL is derived automatically from the deployed folder name through `rm_
 | `action=get-event&event_code=...` | Event page (reserved) |
 | `action=register&event_code=...` | Public registration form (default / individual) |
 | `action=register&event_code=...&package={slug}` | Public form for a named registration package |
-| `action=export-event-registrants&event_code=...` | Secured JSON export of v2 registrants (Bearer token; see below) |
+| `action=export-event-registrants&event_code=...` | Secured JSON export of v2 registrants (Bearer token) |
+
+Full export API setup, response fields, Postman, and Apps Script integration: see **[docs/REGISTRANTS-EXPORT-API.md](docs/REGISTRANTS-EXPORT-API.md)**.
 
 Legacy group redirect entry: `/registration-v2/redirect.php?e={event_id}` (for v2 group events)
 
 Webhook endpoint: `https://www.biblesociety.sg/registration-v2/webhook.php` (POST, production only)
-
-### Registrants export API (Google Apps Script)
-
-Secured replacement for the legacy `script/google4.php` scrape, for **v2** events that store people in `event_registrant`.
-
-```
-GET /registration-v2/?action=export-event-registrants
-    &event_code={programCode}
-    &mode=unreported|all
-    &package_filter=all|individual|{promotion_id}
-    &addon_filter=no-addon|include|addon-only
-```
-
-| Param | Default | Meaning |
-|-------|---------|---------|
-| `event_code` | *(required)* | Event program code (same role as google4 `tbl`) |
-| `mode` | `unreported` | `unreported` returns only rows with `reported=0` then marks them `1`; `all` returns every non-cancelled row without changing `reported` |
-| `package_filter` | `all` | Limit to Individual or a promotion id |
-| `addon_filter` | `no-addon` | `no-addon` = primary + member only; `include` = primary + member + addon; `addon-only` = guests only |
-
-Legacy `include_addons=0|1` still works (`0` → `no-addon`, `1` → `include`).
-
-**Auth:** `Authorization: Bearer <token>` using `RM_EXPORT_API_TOKEN` (preferred) or `BSS_API_BEARER_TOKEN`.
-
-**Response** includes both shapes:
-
-- `registrant_rows` — flat array for writing spreadsheet rows
-- `packages[]` — same rows grouped by package (`key`, `label`, `slug`, counts, `registrants`)
-- `summary` — totals / paid / revenue
-
-Define a dedicated export token in `wp-config.php` so it can be rotated without breaking BSS REST:
-
-```php
-define('RM_EXPORT_API_TOKEN', '…long random secret…');
-```
-
-Apps Script example:
-
-```javascript
-function check() {
-  var programCode = 'LET2601';
-  var token = PropertiesService.getScriptProperties().getProperty('RM_EXPORT_API_TOKEN');
-  var url = 'https://www.biblesociety.sg/registration-v2/'
-    + '?action=export-event-registrants'
-    + '&event_code=' + encodeURIComponent(programCode)
-    + '&mode=unreported';
-
-  var response = UrlFetchApp.fetch(url, {
-    headers: { Authorization: 'Bearer ' + token, Accept: 'application/json' },
-    muteHttpExceptions: true
-  });
-  var payload = JSON.parse(response.getContentText());
-  if (!payload.ok) {
-    throw new Error(payload.error || 'Export failed');
-  }
-
-  var rows = payload.registrant_rows; // flat for Sheets
-  // optional: payload.packages for per-package sheets/tabs
-  var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheets()[0];
-  var start = Math.max(sheet.getLastRow(), 1);
-  // write headers once from Object.keys(rows[0]), then append values in that order
-}
-```
-
-Store the token in Script Properties — never hard-code it in the script source.
 
 ### Registration package URLs
 
@@ -247,6 +184,32 @@ VALUES
 
 Staff dashboard: event cards list package links; registrants view shows a package badge, filter, and per-package summary counts.
 
+### Fill-later: add remaining members (`manage-group`)
+
+For paid **`group_flat`** packages with `require_all_members = 0`, leaders can add members after checkout without a second payment.
+
+**Incomplete when:**
+
+- `payment_status` is `paid` or `free`
+- `registration_mode === group_flat`
+- snapshot `group.require_all_members === false`
+- `member_count < group.max`
+
+Not applicable to `group_per_head` or `individual` (per-head would need incremental payment).
+
+**Public URL:**
+
+```
+/registration-manager/?action=manage-group&event_code={code}&t={token}
+/registration-manager/?action=manage-group&event_code={code}   // CN + primary email fallback
+```
+
+- Magic link (`t`) is an HMAC-signed token (30-day TTL) included in the payment confirmation email and thank-you receipt when the roster is incomplete
+- Fallback: confirmation number + primary email; sets an 8-hour session cookie
+- Add-only; existing members are read-only; payment fields are not changed
+
+Helpers live in `includes/group-manage-service.php`.
+
 ### Coexistence
 
 - **No migration** of historical `bss_registrant` rows
@@ -269,6 +232,7 @@ includes/
   registration-config-service.php  Parse settings.registration
   form-schema-service.php      Dynamic form schema + validation
   event-promotion-service.php  Package resolve / merge / present / CRUD
+  group-manage-service.php     Fill-later manage-group access + add member
   event-profile-service.php Event dashboard context + POST handlers
   pricing-service.php          Server-side pricing (incl. early bird + packages)
   event-registration-service.php   v2 header pending/confirmed flow

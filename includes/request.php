@@ -267,7 +267,7 @@ function rm_active_nav(string $view_action): string
 
 function rm_is_public_view(string $view_action): bool
 {
-    return in_array($view_action, ['register', 'payment-return'], true);
+    return in_array($view_action, ['register', 'payment-return', 'manage-group'], true);
 }
 
 function rm_get_pending_id(): int

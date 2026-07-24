@@ -108,14 +108,20 @@ function rm_email_build_headers(array $context): array
 {
     $headers = ['Content-Type: text/html; charset=UTF-8'];
 
+    $cc_emails = ['family.min@biblesociety.sg'];
+
     $event_email = trim((string) ($context['event']['email'] ?? ''));
-    if ($event_email === '') {
-        return $headers;
+    if ($event_email !== '') {
+        foreach (explode(',', $event_email) as $cc) {
+            $cc = trim($cc);
+            if ($cc !== '') {
+                $cc_emails[] = $cc;
+            }
+        }
     }
 
-    foreach (explode(',', $event_email) as $cc) {
-        $cc = trim($cc);
-        if ($cc !== '' && is_email($cc)) {
+    foreach (array_unique($cc_emails) as $cc) {
+        if (is_email($cc)) {
             $headers[] = 'Cc: ' . $cc;
         }
     }
@@ -307,6 +313,9 @@ function rm_email_load_v2_confirmation_context(string $order_number): ?array
     $package_label = function_exists('rm_package_label_from_header')
         ? rm_package_label_from_header($header)
         : 'Individual';
+    $package_slug = function_exists('rm_package_slug_from_header')
+        ? rm_package_slug_from_header($header)
+        : '';
 
     $amount = isset($header['total_amount']) ? (float) $header['total_amount'] : 0.0;
     $currency = 'SGD';
@@ -328,6 +337,31 @@ function rm_email_load_v2_confirmation_context(string $order_number): ?array
 
     $already_sent = (int) ($header['is_email_confirmation_sent'] ?? 0) === 1;
 
+    $group_meta = function_exists('rm_group_incomplete_meta')
+        ? rm_group_incomplete_meta($header)
+        : [
+            'incomplete'      => false,
+            'member_count'    => (int) ($header['member_count'] ?? count($members)),
+            'member_max'      => (int) ($header['member_count'] ?? count($members)),
+            'slots_remaining' => 0,
+        ];
+
+    $manage_group_url = '';
+    if (!empty($group_meta['incomplete']) && function_exists('rm_group_manage_url_for_header')) {
+        $event_code = '';
+        $lookup_event_id = (int) ($header['event_id'] ?? ($event['id'] ?? 0));
+        if ($lookup_event_id > 0 && function_exists('rm_get_event_by_id')) {
+            $source = function_exists('rm_infer_event_source')
+                ? rm_infer_event_source($lookup_event_id)
+                : '';
+            $event_row = rm_get_event_by_id($lookup_event_id, $source);
+            if (is_array($event_row)) {
+                $event_code = trim((string) ($event_row['programCode'] ?? ''));
+            }
+        }
+        $manage_group_url = rm_group_manage_url_for_header($header, $event_code);
+    }
+
     return [
         'source'              => 'v2',
         'registration_id'     => $registration_id,
@@ -342,6 +376,7 @@ function rm_email_load_v2_confirmation_context(string $order_number): ?array
         'guest_label_singular'=> $guest_schema['label_singular'],
         'guest_label_plural'  => $guest_schema['label_plural'],
         'package_label'       => $package_label,
+        'package_slug'        => $package_slug,
         'amount_display'      => $currency . ' ' . number_format($amount, 2),
         'payment_method'      => $payment_method,
         'payment_status'      => (string) ($header['payment_status'] ?? ''),
@@ -350,6 +385,11 @@ function rm_email_load_v2_confirmation_context(string $order_number): ?array
         'show_members'        => count($members) > 1,
         'show_guests'         => $guests !== [],
         'show_package'        => $package_label !== '' && strcasecmp($package_label, 'Individual') !== 0,
+        'group_incomplete'    => !empty($group_meta['incomplete']),
+        'group_member_count'  => (int) ($group_meta['member_count'] ?? 0),
+        'group_member_max'    => (int) ($group_meta['member_max'] ?? 0),
+        'group_slots_remaining' => (int) ($group_meta['slots_remaining'] ?? 0),
+        'manage_group_url'    => $manage_group_url,
     ];
 }
 
@@ -418,6 +458,7 @@ function rm_email_load_legacy_confirmation_context(string $order_number): ?array
         'guest_label_singular'=> 'Guest',
         'guest_label_plural'  => 'Guests',
         'package_label'       => '',
+        'package_slug'        => '',
         'amount_display'      => 'SGD ' . number_format($amount, 2),
         'payment_method'      => $payment_method,
         'payment_status'      => 'paid',

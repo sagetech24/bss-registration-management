@@ -964,6 +964,48 @@ function rm_get_posted_event_promotion_id(): int
 }
 
 /**
+ * Package slug used at signup (pricing snapshot, else promotion row).
+ *
+ * @param array<string, mixed>|null $header
+ */
+function rm_package_slug_from_header(?array $header): string
+{
+    if (!is_array($header)) {
+        return '';
+    }
+
+    $snapshot = $header['pricing_snapshot'] ?? null;
+    if (is_string($snapshot) && $snapshot !== '') {
+        $decoded = json_decode($snapshot, true);
+        $snapshot = is_array($decoded) ? $decoded : [];
+    } elseif (!is_array($snapshot)) {
+        $snapshot = [];
+    }
+
+    $slug = rm_sanitize_package_slug((string) ($snapshot['package_slug'] ?? ''));
+    if ($slug !== '') {
+        return $slug;
+    }
+
+    $promotion_id = isset($header['event_promotion_id']) ? (int) $header['event_promotion_id'] : 0;
+    if ($promotion_id < 1) {
+        return '';
+    }
+
+    $fetched = rm_fetch_event_promotion_by_id($promotion_id);
+    if ($fetched === null) {
+        return '';
+    }
+
+    $slug = (string) ($fetched['slug'] ?? '');
+    if ($slug !== '' && str_contains($slug, '__del')) {
+        $slug = rm_promotion_original_slug_from_deleted($slug, $promotion_id);
+    }
+
+    return rm_sanitize_package_slug($slug);
+}
+
+/**
  * Package label for dashboard rows.
  *
  * @param array<string, mixed>|null $header

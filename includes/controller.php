@@ -7,6 +7,10 @@ function rm_build_context(): array
 {
     $view_action = rm_get_view_action();
 
+    if ($view_action === 'manage-group') {
+        return rm_build_manage_group_context();
+    }
+
     if (rm_is_public_view($view_action)) {
         return rm_build_register_context();
     }
@@ -142,7 +146,8 @@ function rm_build_register_context(): array
                 $flash['status'],
                 $event,
                 $context['event_present'],
-                is_array($flash['debug'] ?? null) ? $flash['debug'] : []
+                is_array($flash['debug'] ?? null) ? $flash['debug'] : [],
+                $package_slug
             );
         }
 

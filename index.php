@@ -72,6 +72,8 @@ if (!empty($context['event_not_found'])) {
 
 if ($context['view_action'] === 'register') {
     $view = 'register';
+} elseif ($context['view_action'] === 'manage-group') {
+    $view = 'manage-group';
 } elseif ($context['view_action'] === 'get-event-registrants') {
     if (!empty($context['event_not_found'])) {
         status_header(404);

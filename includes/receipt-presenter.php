@@ -197,13 +197,13 @@ function rm_present_registration_receipt(
     string $status,
     array $event,
     ?array $event_present = null,
-    array $debug = []
+    array $debug = [],
+    string $fallback_package_slug = ''
 ): ?array {
     $event_present = is_array($event_present) ? $event_present : [];
     $program_code = trim((string) ($event_present['program_code'] ?? ($event['programCode'] ?? '')));
-    $register_another_href = $program_code !== ''
-        ? rm_registration_url(['event_code' => $program_code])
-        : rm_registration_url();
+    $package_slug = rm_resolve_register_another_package_slug($order_number, $debug, $fallback_package_slug);
+    $register_another_href = rm_register_another_href($program_code, $package_slug);
     $event_landing_href = rm_event_landing_url($event);
     $show_event_landing = $event_landing_href !== '' && $event_landing_href !== home_url('/');
 
@@ -274,6 +274,14 @@ function rm_present_registration_receipt(
         ];
     }
 
+    $confirmation_package = trim((string) ($confirmation['package_slug'] ?? ''));
+    if ($confirmation_package !== '') {
+        $package_slug = function_exists('rm_sanitize_package_slug')
+            ? rm_sanitize_package_slug($confirmation_package)
+            : $confirmation_package;
+        $register_another_href = rm_register_another_href($program_code, $package_slug);
+    }
+
     $payment_status = trim((string) ($confirmation['payment_status'] ?? $payment_meta['payment_status']));
     $payment_status_label = 'Confirmed';
     if ($payment_status === 'free') {
@@ -287,6 +295,9 @@ function rm_present_registration_receipt(
     $title = $status === 'confirmed' || $payment_status === 'paid' || $payment_status === 'free'
         ? 'Registration confirmed'
         : 'Registration received';
+
+    $group_incomplete = !empty($confirmation['group_incomplete']);
+    $manage_group_url = trim((string) ($confirmation['manage_group_url'] ?? ''));
 
     return [
         'status'                => $status,
@@ -316,6 +327,112 @@ function rm_present_registration_receipt(
         'register_another_href' => $register_another_href,
         'event_landing_href'    => $event_landing_href,
         'show_event_landing'    => $show_event_landing,
+        'group_incomplete'      => $group_incomplete,
+        'group_member_count'    => (int) ($confirmation['group_member_count'] ?? 0),
+        'group_member_max'      => (int) ($confirmation['group_member_max'] ?? 0),
+        'group_slots_remaining' => (int) ($confirmation['group_slots_remaining'] ?? 0),
+        'manage_group_url'      => $manage_group_url,
         'debug'                 => $debug,
     ];
+}
+
+/**
+ * Public registration URL for "Register Another", preferring the package used at signup.
+ */
+function rm_register_another_href(string $program_code, string $package_slug = ''): string
+{
+    $args = [];
+    if ($program_code !== '') {
+        $args['event_code'] = $program_code;
+    }
+    if ($package_slug !== '') {
+        $args['package'] = $package_slug;
+    }
+
+    return rm_registration_url($args);
+}
+
+/**
+ * Resolve package slug for Register Another: registration → pending → request fallback.
+ *
+ * @param array<string, mixed> $debug
+ */
+function rm_resolve_register_another_package_slug(
+    string $order_number,
+    array $debug = [],
+    string $fallback_package_slug = ''
+): string {
+    $fallback = function_exists('rm_sanitize_package_slug')
+        ? rm_sanitize_package_slug($fallback_package_slug)
+        : trim($fallback_package_slug);
+
+    if ($order_number !== '') {
+        $from_order = rm_package_slug_from_order_number($order_number);
+        if ($from_order !== '') {
+            return $from_order;
+        }
+    }
+
+    $pending_id = isset($debug['pending_id']) ? absint($debug['pending_id']) : 0;
+    if ($pending_id > 0 && function_exists('rm_payment_load_pending')) {
+        $pending = rm_payment_load_pending($pending_id);
+        $header = is_array($pending['_header'] ?? null) ? $pending['_header'] : null;
+        if ($header !== null && function_exists('rm_package_slug_from_header')) {
+            $from_pending = rm_package_slug_from_header($header);
+            if ($from_pending !== '') {
+                return $from_pending;
+            }
+        }
+    }
+
+    return $fallback;
+}
+
+/**
+ * Load package slug for a finalized registration order number.
+ */
+function rm_package_slug_from_order_number(string $order_number): string
+{
+    global $wpdb;
+
+    $order_number = trim($order_number);
+    if (
+        $order_number === ''
+        || !function_exists('rm_event_registration_tables_exist')
+        || !rm_event_registration_tables_exist()
+        || !function_exists('rm_package_slug_from_header')
+    ) {
+        return '';
+    }
+
+    $header = $wpdb->get_row(
+        $wpdb->prepare(
+            'SELECT `event_promotion_id`, `pricing_snapshot`
+             FROM `event_registration`
+             WHERE `primary_order_number` = %s
+             LIMIT 1',
+            $order_number
+        ),
+        ARRAY_A
+    );
+
+    if (!is_array($header) || $header === []) {
+        $header = $wpdb->get_row(
+            $wpdb->prepare(
+                'SELECT h.`event_promotion_id`, h.`pricing_snapshot`
+                 FROM `event_registration` h
+                 INNER JOIN `event_registrant` r ON r.`registration_id` = h.`id`
+                 WHERE r.`order_number` = %s
+                 LIMIT 1',
+                $order_number
+            ),
+            ARRAY_A
+        );
+    }
+
+    if (!is_array($header) || $header === []) {
+        return '';
+    }
+
+    return rm_package_slug_from_header($header);
 }

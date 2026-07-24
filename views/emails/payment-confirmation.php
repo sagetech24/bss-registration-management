@@ -5,7 +5,9 @@
  * Expected vars from rm_email_render(): event, primary, members, guests,
  * order_number, confirmation_number, package_label, amount_display,
  * payment_method, show_members, show_guests, show_package,
- * guest_label_singular, guest_label_plural.
+ * guest_label_singular, guest_label_plural,
+ * group_incomplete, group_member_count, group_member_max, group_slots_remaining,
+ * manage_group_url.
  *
  * @var array<string, mixed> $event
  * @var array<string, mixed>|null $primary
@@ -272,6 +274,47 @@ $rm_email_detail_rows = static function (array $person): array {
                                 <?php endif; ?>
                             </table>
                             <?php endforeach; ?>
+                        </td>
+                    </tr>
+                    <?php endif; ?>
+
+                    <?php
+                    $group_incomplete = !empty($group_incomplete);
+                    $manage_group_url = trim((string) ($manage_group_url ?? ''));
+                    $group_slots_remaining = (int) ($group_slots_remaining ?? 0);
+                    $group_member_count = (int) ($group_member_count ?? 0);
+                    $group_member_max = (int) ($group_member_max ?? 0);
+                    ?>
+                    <?php if ($group_incomplete && $manage_group_url !== '') : ?>
+                    <tr>
+                        <td style="padding:20px 28px 8px 28px;">
+                            <p style="margin:0 0 10px 0;font-size:13px;font-weight:bold;letter-spacing:0.04em;text-transform:uppercase;color:#1a5f4a;">
+                                Complete your group roster
+                            </p>
+                            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="border:1px solid #c3ddfd;border-radius:3px;background-color:#eff6ff;">
+                                <tr>
+                                    <td style="padding:16px 18px;">
+                                        <p style="margin:0 0 10px 0;font-size:14px;line-height:1.55;color:#1e3a5f;">
+                                            Your group package still has
+                                            <strong><?php echo esc_html((string) $group_slots_remaining); ?></strong>
+                                            open slot<?php echo $group_slots_remaining === 1 ? '' : 's'; ?>
+                                            (<?php echo esc_html((string) $group_member_count); ?> of <?php echo esc_html((string) $group_member_max); ?> registered).
+                                            You can add the remaining members online at no extra charge.
+                                        </p>
+                                        <p style="margin:0 0 16px 0;">
+                                            <a href="<?php echo esc_url($manage_group_url); ?>" style="display:inline-block;background-color:#1d4ed8;color:#ffffff;text-decoration:none;font-size:14px;font-weight:bold;padding:12px 18px;border-radius:4px;">
+                                                Add remaining members
+                                            </a>
+                                        </p>
+                                        <p style="margin:0;font-size:12px;line-height:1.5;color:#475569;">
+                                            If the button does not work, open the link from this email on the same device,
+                                            or visit the manage page and sign in with confirmation number
+                                            <strong><?php echo esc_html((string) ($confirmation_number ?? '')); ?></strong>
+                                            and your primary email.
+                                        </p>
+                                    </td>
+                                </tr>
+                            </table>
                         </td>
                     </tr>
                     <?php endif; ?>

@@ -71,6 +71,29 @@ $render_detail_table = static function (array $rows): void {
         </svg>
         <p class="text-4xl lg:text-3xl font-semibold text-green-500 text-center">Your registration has been confirmed!</p>
         <p class="mt-3 text-lg lg:text-sm text-green-700 text-center">Full details of your registration have been sent to your email address <span class="font-medium text-green-900"><?php echo esc_html($confirmation_email); ?></span>.</p>
+        <?php
+        $group_incomplete = !empty($receipt['group_incomplete']);
+        $manage_group_url = trim((string) ($receipt['manage_group_url'] ?? ''));
+        $group_slots_remaining = (int) ($receipt['group_slots_remaining'] ?? 0);
+        $group_member_count = (int) ($receipt['group_member_count'] ?? 0);
+        $group_member_max = (int) ($receipt['group_member_max'] ?? 0);
+        ?>
+        <?php if ($group_incomplete && $manage_group_url !== '') : ?>
+            <div class="mt-6 w-full max-w-xl rounded-xl border border-indigo-200 bg-indigo-50 p-5 text-left">
+                <p class="text-sm font-semibold text-indigo-900">Complete your group roster</p>
+                <p class="mt-2 text-sm text-indigo-800">
+                    You still have <?php echo esc_html((string) $group_slots_remaining); ?> open slot<?php echo $group_slots_remaining === 1 ? '' : 's'; ?>
+                    (<?php echo esc_html((string) $group_member_count); ?> of <?php echo esc_html((string) $group_member_max); ?> registered).
+                    Add remaining members at no extra charge.
+                </p>
+                <a
+                    href="<?php echo esc_url($manage_group_url); ?>"
+                    class="mt-4 inline-flex items-center justify-center rounded-lg bg-indigo-700 px-5 py-2.5 text-sm font-medium text-white hover:bg-indigo-800 transition"
+                >
+                    Add remaining members
+                </a>
+            </div>
+        <?php endif; ?>
         <div class="mt-8 flex justify-center items-center gap-2">
             <a href="<?php echo esc_url($event_landing_href); ?>" class="inline-flex items-center justify-center rounded-lg bg-green-500 px-5 py-2.5 text-sm font-medium text-white hover:bg-green-600 transition">
                 Go back to Event Page
