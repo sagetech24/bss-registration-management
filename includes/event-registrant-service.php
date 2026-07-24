@@ -185,6 +185,7 @@ function rm_normalize_v2_registrant_row(array $registrant, ?array $header = null
         '_v2'                    => true,
         '_registration_id'       => isset($registrant['registration_id']) ? (int) $registrant['registration_id'] : 0,
         '_member_index'          => isset($registrant['member_index']) ? (int) $registrant['member_index'] : 0,
+        '_member_count'          => is_array($header) ? max(1, (int) ($header['member_count'] ?? 1)) : 1,
         '_role'                  => (string) ($registrant['role'] ?? ''),
         '_payment_status'        => $payment_status,
         '_is_paid'               => $is_paid,

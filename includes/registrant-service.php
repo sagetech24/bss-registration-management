@@ -217,6 +217,12 @@ function rm_present_registrant_row(array $registrant, bool $is_pending = false):
             ? (int) $registrant['_event_promotion_id']
             : null,
         'registration_id'    => isset($registrant['_registration_id']) ? (int) $registrant['_registration_id'] : 0,
+        'member_count'       => isset($registrant['_member_count'])
+            ? max(1, (int) $registrant['_member_count'])
+            : 1,
+        'is_group'           => isset($registrant['_member_count'])
+            ? (int) $registrant['_member_count'] > 1
+            : false,
     ];
 }
 

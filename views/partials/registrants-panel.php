@@ -14,6 +14,17 @@ document.addEventListener('alpine:init', () => {
         loading: true,
         error: '',
         rows: [],
+        groupColorMap: {},
+        groupHighlightColors: [
+            'bg-sky-50',
+            'bg-violet-50',
+            'bg-amber-50',
+            'bg-emerald-50',
+            'bg-rose-50',
+            'bg-cyan-50',
+            'bg-orange-50',
+            'bg-fuchsia-50',
+        ],
         summary: {
             total: 0,
             paid_count: 0,
@@ -111,10 +122,12 @@ document.addEventListener('alpine:init', () => {
                 if (!data.ok) {
                     this.error = data.error || 'Failed to load registrants.';
                     this.rows = [];
+                    this.groupColorMap = {};
                     return;
                 }
 
                 this.rows = data.registrant_rows || [];
+                this.rebuildGroupHighlights();
                 this.summary = data.registrants_summary || this.summary;
                 this.packageSummary = data.package_summary || [];
                 this.packageOptions = data.package_options || this.packageOptions;
@@ -129,9 +142,44 @@ document.addEventListener('alpine:init', () => {
             } catch (e) {
                 this.error = 'Failed to load registrants.';
                 this.rows = [];
+                this.groupColorMap = {};
             } finally {
                 this.loading = false;
             }
+        },
+        rebuildGroupHighlights() {
+            const map = {};
+            let colorIdx = 0;
+            const colors = this.groupHighlightColors || [];
+
+            (this.rows || []).forEach((row) => {
+                if (!row || !row.is_group) {
+                    return;
+                }
+
+                const registrationId = Number(row.registration_id || 0);
+                if (registrationId < 1 || map[registrationId] !== undefined) {
+                    return;
+                }
+
+                map[registrationId] = colors.length > 0
+                    ? colors[colorIdx % colors.length]
+                    : '';
+                colorIdx += 1;
+            });
+
+            this.groupColorMap = map;
+        },
+        rowHighlightClass(row) {
+            const registrationId = Number(row?.registration_id || 0);
+            if (!row?.is_group || registrationId < 1) {
+                return 'hover:bg-slate-50/80';
+            }
+
+            const highlight = this.groupColorMap[registrationId] || '';
+            return highlight
+                ? `${highlight} hover:brightness-[0.97]`
+                : 'hover:bg-slate-50/80';
         },
         goToPage(page) {
             if (this.loading || page < 1 || page > this.pagination.total_pages) {
@@ -422,7 +470,7 @@ document.addEventListener('alpine:init', () => {
                         </thead>
                         <tbody class="divide-y divide-slate-100 bg-white">
                             <template x-for="row in rows" :key="row.registrant_id || row.order_number + row.email">
-                                <tr class="hover:bg-slate-50/80">
+                                <tr :class="rowHighlightClass(row)">
                                     <td class="whitespace-nowrap px-4 py-3 text-xs font-mono font-semibold text-slate-800" x-text="row.order_number || 'N/A'"></td>
                                     <td class="px-4 py-3 text-sm">
                                         <p class="font-medium text-slate-800 text-lg" x-text="row.full_name"></p>
