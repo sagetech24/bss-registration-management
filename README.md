@@ -16,6 +16,7 @@ Event registration and payment module for Bible Society Singapore (BSS). Runs as
 - MySQL tables: `bss_events`, `bss_registrant`, `bss_registrant_pendings`
 - v2 tables (auto-installed on bootstrap): `event_registration`, `event_registrant`, `event_registration_pendings`, `event_registrant_pendings`
 - Package promotions table (auto-installed): `event_promotions` (+ `event_promotion_id` on registration headers)
+- Export cursor column (auto-installed): `event_registrant.reported`
 - BSS REST API access
 
 ## Installation
@@ -30,7 +31,7 @@ Event registration and payment module for Bible Society Singapore (BSS). Runs as
 php -r "require 'registration-v2/bootstrap.php'; print_r(rm_install_event_registration_tables());"
 ```
 
-Or apply `migrations/001_event_registration_tables.sql`, `migrations/002_event_promotions.sql`, and `migrations/003_event_promotions_compare_at_price.sql` directly in MySQL.
+Or apply `migrations/001_event_registration_tables.sql`, `migrations/002_event_promotions.sql`, `migrations/003_event_promotions_compare_at_price.sql`, and `migrations/004_event_registrant_reported.sql` directly in MySQL.
 
 ```
 wordpress-root/
@@ -51,6 +52,7 @@ Define these in the parent `wp-config.php`. **Do not commit real values to this 
 | Constant | Purpose |
 |----------|---------|
 | `BSS_API_BEARER_TOKEN` | Bearer token for the BSS REST API |
+| `RM_EXPORT_API_TOKEN` | Bearer token for the Apps Script registrants export API (falls back to `BSS_API_BEARER_TOKEN` if unset) |
 | `HITPAY_TEST_KEY` | HitPay sandbox API key |
 | `HITPAY_LIVE_KEY` | HitPay production API key |
 | `HITPAY_TEST_SALT` | Sandbox **API-key salt** (Developers page — for `hmac` in POST body) |
@@ -79,10 +81,76 @@ The base URL is derived automatically from the deployed folder name through `rm_
 | `action=get-event&event_code=...` | Event page (reserved) |
 | `action=register&event_code=...` | Public registration form (default / individual) |
 | `action=register&event_code=...&package={slug}` | Public form for a named registration package |
+| `action=export-event-registrants&event_code=...` | Secured JSON export of v2 registrants (Bearer token; see below) |
 
 Legacy group redirect entry: `/registration-v2/redirect.php?e={event_id}` (for v2 group events)
 
 Webhook endpoint: `https://www.biblesociety.sg/registration-v2/webhook.php` (POST, production only)
+
+### Registrants export API (Google Apps Script)
+
+Secured replacement for the legacy `script/google4.php` scrape, for **v2** events that store people in `event_registrant`.
+
+```
+GET /registration-v2/?action=export-event-registrants
+    &event_code={programCode}
+    &mode=unreported|all
+    &package_filter=all|individual|{promotion_id}
+    &addon_filter=no-addon|include|addon-only
+```
+
+| Param | Default | Meaning |
+|-------|---------|---------|
+| `event_code` | *(required)* | Event program code (same role as google4 `tbl`) |
+| `mode` | `unreported` | `unreported` returns only rows with `reported=0` then marks them `1`; `all` returns every non-cancelled row without changing `reported` |
+| `package_filter` | `all` | Limit to Individual or a promotion id |
+| `addon_filter` | `no-addon` | `no-addon` = primary + member only; `include` = primary + member + addon; `addon-only` = guests only |
+
+Legacy `include_addons=0|1` still works (`0` → `no-addon`, `1` → `include`).
+
+**Auth:** `Authorization: Bearer <token>` using `RM_EXPORT_API_TOKEN` (preferred) or `BSS_API_BEARER_TOKEN`.
+
+**Response** includes both shapes:
+
+- `registrant_rows` — flat array for writing spreadsheet rows
+- `packages[]` — same rows grouped by package (`key`, `label`, `slug`, counts, `registrants`)
+- `summary` — totals / paid / revenue
+
+Define a dedicated export token in `wp-config.php` so it can be rotated without breaking BSS REST:
+
+```php
+define('RM_EXPORT_API_TOKEN', '…long random secret…');
+```
+
+Apps Script example:
+
+```javascript
+function check() {
+  var programCode = 'LET2601';
+  var token = PropertiesService.getScriptProperties().getProperty('RM_EXPORT_API_TOKEN');
+  var url = 'https://www.biblesociety.sg/registration-v2/'
+    + '?action=export-event-registrants'
+    + '&event_code=' + encodeURIComponent(programCode)
+    + '&mode=unreported';
+
+  var response = UrlFetchApp.fetch(url, {
+    headers: { Authorization: 'Bearer ' + token, Accept: 'application/json' },
+    muteHttpExceptions: true
+  });
+  var payload = JSON.parse(response.getContentText());
+  if (!payload.ok) {
+    throw new Error(payload.error || 'Export failed');
+  }
+
+  var rows = payload.registrant_rows; // flat for Sheets
+  // optional: payload.packages for per-package sheets/tabs
+  var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheets()[0];
+  var start = Math.max(sheet.getLastRow(), 1);
+  // write headers once from Object.keys(rows[0]), then append values in that order
+}
+```
+
+Store the token in Script Properties — never hard-code it in the script source.
 
 ### Registration package URLs
 

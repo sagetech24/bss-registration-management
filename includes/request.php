@@ -168,6 +168,59 @@ function rm_get_package_filter(): string
     return 'all';
 }
 
+/**
+ * @return 'unreported'|'all'
+ */
+function rm_get_export_mode(): string
+{
+    if (!isset($_GET['mode'])) {
+        return 'unreported';
+    }
+
+    $mode = sanitize_key(wp_unslash((string) $_GET['mode']));
+
+    return $mode === 'all' ? 'all' : 'unreported';
+}
+
+/**
+ * Addon role filter for the registrants export API.
+ *
+ * @return 'no-addon'|'include'|'addon-only'
+ */
+function rm_get_export_addon_filter(): string
+{
+    if (isset($_GET['addon_filter'])) {
+        $raw = sanitize_key(wp_unslash((string) $_GET['addon_filter']));
+        if (in_array($raw, ['no-addon', 'include', 'addon-only'], true)) {
+            return $raw;
+        }
+
+        // Friendly aliases
+        if (in_array($raw, ['exclude', 'none', 'primary-member'], true)) {
+            return 'no-addon';
+        }
+        if (in_array($raw, ['with-addon', 'with-addons', 'all'], true)) {
+            return 'include';
+        }
+        if (in_array($raw, ['addons-only', 'addon', 'guests'], true)) {
+            return 'addon-only';
+        }
+    }
+
+    // Backward compatible with include_addons=0|1
+    if (isset($_GET['include_addons'])) {
+        $legacy = sanitize_text_field(wp_unslash((string) $_GET['include_addons']));
+        if (in_array($legacy, ['1', 'true', 'yes'], true)) {
+            return 'include';
+        }
+        if (in_array($legacy, ['0', 'false', 'no'], true)) {
+            return 'no-addon';
+        }
+    }
+
+    return 'no-addon';
+}
+
 function rm_get_event_id(): int
 {
     if (!isset($_GET['event_id'])) {

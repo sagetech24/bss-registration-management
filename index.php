@@ -4,6 +4,14 @@ require_once __DIR__ . '/bootstrap.php';
 
 $view_action = rm_get_view_action();
 
+if ($view_action === 'export-event-registrants') {
+    nocache_headers();
+    header('Content-Type: application/json; charset=utf-8');
+    rm_require_export_api_bearer();
+    echo wp_json_encode(rm_build_event_registrants_export());
+    exit;
+}
+
 if ($view_action === 'payment-transactions-data') {
     rm_require_login();
     nocache_headers();

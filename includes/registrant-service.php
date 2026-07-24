@@ -323,6 +323,46 @@ function rm_registrants_exclude_addons(array $registrants): array
 }
 
 /**
+ * Exclude non-addon rows — keep guest/addon only.
+ *
+ * @param array<int, array<string, mixed>> $registrants
+ * @return array<int, array<string, mixed>>
+ */
+function rm_registrants_addons_only(array $registrants): array
+{
+    $out = [];
+    foreach ($registrants as $row) {
+        if (!is_array($row)) {
+            continue;
+        }
+        if (($row['_role'] ?? '') === 'addon') {
+            $out[] = $row;
+        }
+    }
+
+    return $out;
+}
+
+/**
+ * Apply export addon_filter: no-addon | include | addon-only.
+ *
+ * @param array<int, array<string, mixed>> $registrants
+ * @return array<int, array<string, mixed>>
+ */
+function rm_filter_registrants_by_addon_filter(array $registrants, string $addon_filter): array
+{
+    if ($addon_filter === 'include') {
+        return $registrants;
+    }
+
+    if ($addon_filter === 'addon-only') {
+        return rm_registrants_addons_only($registrants);
+    }
+
+    return rm_registrants_exclude_addons($registrants);
+}
+
+/**
  * Attach guest addons to each primary registrant in a registration group.
  *
  * @param array<int, array<string, mixed>> $registrants
