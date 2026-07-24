@@ -241,6 +241,7 @@ function rm_handle_save_registration_settings_post(int $event_id, string $source
             'guest_label_plural'      => $_POST['guest_label_plural'] ?? null,
             'guest_min'               => $_POST['guest_min'] ?? null,
             'guest_max'               => $_POST['guest_max'] ?? null,
+            'guest_event_max'         => $_POST['guest_event_max'] ?? null,
             'guest_price'             => $_POST['guest_price'] ?? null,
             'guest_fields'            => $_POST['guest_fields'] ?? null,
             'guest_fields_submitted'  => $_POST['guest_fields_submitted'] ?? null,

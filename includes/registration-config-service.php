@@ -189,6 +189,7 @@ function rm_registration_config_defaults(): array
             'label_plural'   => 'Guests',
             'min'            => 0,
             'max'            => 0,
+            'event_max'      => 0,
             'price'          => 0,
             'form'           => [
                 'fields' => [],
@@ -397,6 +398,7 @@ function rm_parse_registration_config(array $event): array
     }
     $config['guests']['min'] = max(0, (int) ($config['guests']['min'] ?? 0));
     $config['guests']['max'] = max($config['guests']['min'], (int) ($config['guests']['max'] ?? 0));
+    $config['guests']['event_max'] = max(0, (int) ($config['guests']['event_max'] ?? 0));
     $config['guests']['price'] = max(0, (float) ($config['guests']['price'] ?? 0));
     if (!isset($config['guests']['form']) || !is_array($config['guests']['form'])) {
         $config['guests']['form'] = ['fields' => []];
@@ -493,6 +495,7 @@ function rm_present_registration_config(array $config): array
         'guests_enabled'     => $guests_enabled,
         'guest_label'        => $guests_enabled ? trim((string) ($guests['label_plural'] ?? 'Guests')) : '',
         'guest_max'          => (int) ($guests['max'] ?? 0),
+        'guest_event_max'    => (int) ($guests['event_max'] ?? 0),
         'guest_price'        => (float) ($guests['price'] ?? 0),
     ];
 }
@@ -684,6 +687,9 @@ function rm_normalize_registration_settings_input(array $input, array $existing_
 
     $guest_min = isset($input['guest_min']) ? max(0, absint($input['guest_min'])) : (int) ($existing_guests['min'] ?? 0);
     $guest_max = isset($input['guest_max']) ? max($guest_min, absint($input['guest_max'])) : max($guest_min, (int) ($existing_guests['max'] ?? 0));
+    $guest_event_max = isset($input['guest_event_max'])
+        ? max(0, absint($input['guest_event_max']))
+        : max(0, (int) ($existing_guests['event_max'] ?? 0));
     $guest_price = null;
     if (isset($input['guest_price']) && trim((string) $input['guest_price']) !== '') {
         $guest_price = (float) $input['guest_price'];
@@ -737,6 +743,7 @@ function rm_normalize_registration_settings_input(array $input, array $existing_
     if (!$guests_enabled) {
         $guest_min = 0;
         $guest_max = 0;
+        $guest_event_max = 0;
     }
 
     $registration = $existing;
@@ -758,6 +765,7 @@ function rm_normalize_registration_settings_input(array $input, array $existing_
         'label_plural'   => $guest_label_plural,
         'min'            => $guest_min,
         'max'            => $guest_max,
+        'event_max'      => $guest_event_max,
         'price'          => $guest_price,
         'form'           => [
             'fields' => $guest_form_fields,

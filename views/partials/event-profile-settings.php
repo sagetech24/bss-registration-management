@@ -25,6 +25,7 @@ $guest_label_singular = (string) ($guests_config['label_singular'] ?? 'Guest');
 $guest_label_plural = (string) ($guests_config['label_plural'] ?? 'Guests');
 $guest_min = (int) ($guests_config['min'] ?? 0);
 $guest_max = (int) ($guests_config['max'] ?? 0);
+$guest_event_max = (int) ($guests_config['event_max'] ?? 0);
 $guest_price = $guests_config['price'] ?? 0;
 $guest_price_value = (string) $guest_price;
 $admin_guest_fields = rm_form_present_admin_guest_fields($registration_config);
@@ -170,7 +171,7 @@ document.addEventListener('alpine:init', () => {
                     </label>
     
                     <div x-show="guestsEnabled" x-cloak class="space-y-4">
-                        <div class="grid grid-cols-2 gap-3">
+                        <div class="grid grid-cols-3 gap-3">
                             <div>
                                 <label class="block text-xs font-medium text-slate-600 mb-1" for="rm_guest_label_singular">Label (singular)</label>
                                 <input id="rm_guest_label_singular" type="text" name="guest_label_singular" value="<?php echo esc_attr($guest_label_singular); ?>" placeholder="e.g. Child, Relative" class="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none" />
@@ -179,19 +180,25 @@ document.addEventListener('alpine:init', () => {
                                 <label class="block text-xs font-medium text-slate-600 mb-1" for="rm_guest_label_plural">Label (plural)</label>
                                 <input id="rm_guest_label_plural" type="text" name="guest_label_plural" value="<?php echo esc_attr($guest_label_plural); ?>" placeholder="e.g. Children, Relatives" class="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none" />
                             </div>
+                            <div>
+                                <label class="block text-xs font-medium text-slate-600 mb-1" for="rm_guest_event_max">Add-on Guest Limit</label>
+                                <input id="rm_guest_event_max" type="number" min="0" name="guest_event_max" value="<?php echo esc_attr((string) $guest_event_max); ?>" class="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none" />
+                                <p class="mt-1 text-xs text-slate-500">Overall cap; 0 = unlimited</p>
+                            </div>
                         </div>
     
                         <div class="grid grid-cols-3 gap-3">
                             <div>
-                                <label class="block text-xs font-medium text-slate-600 mb-1" for="rm_guest_min">Min guests</label>
+                                <label class="block text-xs font-medium text-slate-600 mb-1" for="rm_guest_min">Min. Add-on</label>
                                 <input id="rm_guest_min" type="number" min="0" name="guest_min" value="<?php echo esc_attr((string) $guest_min); ?>" class="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none" />
                             </div>
                             <div>
-                                <label class="block text-xs font-medium text-slate-600 mb-1" for="rm_guest_max">Max guests</label>
+                                <label class="block text-xs font-medium text-slate-600 mb-1" for="rm_guest_max">Max Add-on</label>
                                 <input id="rm_guest_max" type="number" min="0" name="guest_max" value="<?php echo esc_attr((string) $guest_max); ?>" class="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none" />
+                                <p class="mt-1 text-xs text-slate-500">Per registration</p>
                             </div>
                             <div>
-                                <label class="block text-xs font-medium text-slate-600 mb-1" for="rm_guest_price">Price per guest</label>
+                                <label class="block text-xs font-medium text-slate-600 mb-1" for="rm_guest_price">Price Per Add-on</label>
                                 <div class="flex">
                                     <span class="inline-flex items-center rounded-l-lg border border-r-0 border-slate-300 bg-slate-50 px-3 text-sm text-slate-600"><?php echo esc_html($currency_value); ?></span>
                                     <input id="rm_guest_price" type="number" min="0" step="0.01" name="guest_price" value="<?php echo esc_attr($guest_price_value); ?>" placeholder="0 = free" class="w-full rounded-r-lg rounded-l-none border border-slate-300 bg-white px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none" />

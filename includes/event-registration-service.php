@@ -9,6 +9,61 @@ function rm_generate_confirmation_number(): string
 }
 
 /**
+ * Count guest (addon) rows for an event across confirmed and pending tables.
+ */
+function rm_v2_count_event_addons(int $event_id): int
+{
+    if ($event_id <= 0) {
+        return 0;
+    }
+
+    global $wpdb;
+
+    $confirmed = (int) $wpdb->get_var(
+        $wpdb->prepare(
+            "SELECT COUNT(*) FROM `event_registrant` WHERE `event_id` = %d AND `role` = 'addon'",
+            $event_id
+        )
+    );
+    $pending = (int) $wpdb->get_var(
+        $wpdb->prepare(
+            "SELECT COUNT(*) FROM `event_registrant_pendings` WHERE `event_id` = %d AND `role` = 'addon'",
+            $event_id
+        )
+    );
+
+    return max(0, $confirmed + $pending);
+}
+
+/**
+ * Event-wide guest capacity for an event.
+ *
+ * @param array<string, mixed> $event
+ * @return array{event_max: int, used: int, remaining: int|null}
+ */
+function rm_guest_event_capacity(array $event): array
+{
+    $config = rm_parse_registration_config($event);
+    $event_max = max(0, (int) ($config['guests']['event_max'] ?? 0));
+    $event_id = isset($event['id']) ? absint($event['id']) : 0;
+    $used = $event_id > 0 ? rm_v2_count_event_addons($event_id) : 0;
+
+    if ($event_max <= 0) {
+        return [
+            'event_max' => 0,
+            'used'      => $used,
+            'remaining' => null,
+        ];
+    }
+
+    return [
+        'event_max' => $event_max,
+        'used'      => $used,
+        'remaining' => max(0, $event_max - $used),
+    ];
+}
+
+/**
  * @param array<string, mixed> $event
  * @param list<array{core: array<string, string|null>, custom: array<string, mixed>}> $member_rows
  * @param array<string, mixed> $pricing
@@ -53,6 +108,14 @@ function rm_v2_submit_registration(
     if (!empty($guests_config['enabled'])) {
         $guest_min = (int) ($guests_config['min'] ?? 0);
         $guest_max = (int) ($guests_config['max'] ?? 0);
+        $capacity = rm_guest_event_capacity($event);
+        $remaining = $capacity['remaining'];
+
+        // When event capacity cannot satisfy the configured minimum, do not block the registration.
+        if ($remaining !== null && $remaining < $guest_min) {
+            $guest_min = 0;
+        }
+
         if ($guest_count < $guest_min) {
             $label = (string) ($guests_config['label_plural'] ?? 'guest(s)');
             return rm_v2_submit_error('At least ' . $guest_min . ' ' . strtolower($label) . ' required.');
@@ -60,6 +123,18 @@ function rm_v2_submit_registration(
         if ($guest_max > 0 && $guest_count > $guest_max) {
             $label = (string) ($guests_config['label_plural'] ?? 'guest(s)');
             return rm_v2_submit_error('No more than ' . $guest_max . ' ' . strtolower($label) . ' allowed.');
+        }
+        if ($remaining !== null && $guest_count > $remaining) {
+            $label = (string) ($guests_config['label_plural'] ?? 'guest(s)');
+            if ($remaining <= 0) {
+                return rm_v2_submit_error(
+                    'Guest capacity for this event is full. No more ' . strtolower($label) . ' can be added.'
+                );
+            }
+
+            return rm_v2_submit_error(
+                'Only ' . $remaining . ' ' . strtolower($label) . ' slot(s) remaining for this event.'
+            );
         }
     } elseif ($guest_count > 0) {
         return rm_v2_submit_error('Guest registration is not enabled for this event.');
