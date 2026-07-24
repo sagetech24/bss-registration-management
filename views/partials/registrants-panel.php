@@ -413,7 +413,7 @@ document.addEventListener('alpine:init', () => {
                                 <th scope="col" class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-slate-600">Order number</th>
                                 <th scope="col" class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-slate-600">Registrant</th>
                                 <th scope="col" class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-slate-600">Package</th>
-                                <th scope="col" x-show="!eventIsFree" class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-slate-600">Amount</th>
+                                <!-- <th scope="col" x-show="!eventIsFree" class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-slate-600">Amount</th> -->
                                 <th scope="col" x-show="!eventIsFree" class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-slate-600">Payment Method</th>
                                 <th scope="col" x-show="!eventIsFree" class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-slate-600">Status</th>
                                 <th scope="col" class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-slate-600">Email sent</th>
@@ -460,7 +460,7 @@ document.addEventListener('alpine:init', () => {
                                             ></button>
                                         </div>
                                     </td>
-                                    <td x-show="!eventIsFree" class="whitespace-nowrap px-4 py-3 text-xs text-slate-700" x-text="row.charge_amount_display || row.amount_display"></td>
+                                    <!-- <td x-show="!eventIsFree" class="whitespace-nowrap px-4 py-3 text-xs text-slate-700" x-text="row.charge_amount_display || row.amount_display"></td> -->
                                     <td x-show="!eventIsFree" class="px-4 py-3 text-xs text-slate-700">
                                         <div class="flex items-center gap-2">
                                             <img
