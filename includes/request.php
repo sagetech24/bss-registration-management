@@ -374,6 +374,9 @@ function rm_get_registrant_id(): int
 }
 
 /**
+ * Base event profile tabs. The addons tab label is overridden per-event
+ * from guests.label_plural when Accept Guests is enabled.
+ *
  * @return array<string, string>
  */
 function rm_event_profile_tabs(): array
@@ -382,9 +385,34 @@ function rm_event_profile_tabs(): array
         'packages'     => 'Promotion Packages',
         'promo-codes'  => 'Promo Codes',
         'registrants'  => 'Registrants',
+        'addons'       => 'Guests',
         'custom-form'  => 'Custom Form Options',
         'settings'     => 'Event Settings',
     ];
+}
+
+/**
+ * Event profile tabs for a specific event — includes the addons tab only when
+ * Accept Guests is enabled, labelled with guests.label_plural.
+ *
+ * @param array<string, mixed>|null $registration_config
+ * @return array<string, string>
+ */
+function rm_event_profile_tabs_for_event(?array $registration_config = null): array
+{
+    $tabs = rm_event_profile_tabs();
+    $guests = is_array($registration_config['guests'] ?? null) ? $registration_config['guests'] : [];
+
+    if (empty($guests['enabled'])) {
+        unset($tabs['addons']);
+
+        return $tabs;
+    }
+
+    $plural = trim((string) ($guests['label_plural'] ?? 'Guests'));
+    $tabs['addons'] = $plural !== '' ? $plural : 'Guests';
+
+    return $tabs;
 }
 
 function rm_get_event_profile_tab(): string

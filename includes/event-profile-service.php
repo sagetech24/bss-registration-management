@@ -510,13 +510,40 @@ function rm_build_event_profile_context(array $events_by_year, string $requested
         'total_revenue' => 0.0,
     ];
     $package_summary = [];
+    $profile_tabs = rm_event_profile_tabs_for_event($registration_config);
     $profile_tab = rm_get_event_profile_tab();
-    if ($event_id > 0 && $profile_tab !== 'registrants') {
+    if (!array_key_exists($profile_tab, $profile_tabs)) {
+        $profile_tab = 'packages';
+    }
+
+    $addon_rows = [];
+    $addon_columns = [];
+    $addon_label_singular = (string) ($registration_config['guests']['label_singular'] ?? 'Guest');
+    $addon_label_plural = (string) ($registration_config['guests']['label_plural'] ?? 'Guests');
+    $addon_error = '';
+    $addon_total = 0;
+
+    $needs_summary = $event_id > 0 && !in_array($profile_tab, ['registrants', 'addons'], true);
+    $needs_addon_rows = $event_id > 0 && $profile_tab === 'addons';
+
+    if ($needs_summary || $needs_addon_rows) {
         $db_fetch = rm_fetch_registrants_from_db($event_id, $selected_event);
         if ($db_fetch['error'] === '') {
-            $table_registrants = rm_registrants_exclude_addons($db_fetch['registrants']);
-            $summary = rm_registrants_summary($table_registrants);
-            $package_summary = rm_registrants_package_summary($table_registrants);
+            if ($needs_summary) {
+                $table_registrants = rm_registrants_exclude_addons($db_fetch['registrants']);
+                $summary = rm_registrants_summary($table_registrants);
+                $package_summary = rm_registrants_package_summary($table_registrants);
+            }
+            if ($needs_addon_rows) {
+                $presented_addons = rm_present_event_addon_rows($db_fetch['registrants'], $selected_event);
+                $addon_rows = $presented_addons['rows'];
+                $addon_columns = $presented_addons['columns'];
+                $addon_label_singular = $presented_addons['label_singular'];
+                $addon_label_plural = $presented_addons['label_plural'];
+                $addon_total = $presented_addons['total'];
+            }
+        } elseif ($needs_addon_rows) {
+            $addon_error = $db_fetch['error'];
         }
     }
 
@@ -569,10 +596,16 @@ function rm_build_event_profile_context(array $events_by_year, string $requested
         'event_not_found'             => false,
         'profile_error'               => '',
         'profile_tab'                 => $profile_tab,
-        'profile_tabs'                => rm_event_profile_tabs(),
+        'profile_tabs'                => $profile_tabs,
         'uses_v2'                     => $uses_v2,
         'registration_config'         => $registration_config,
         'registration_config_present' => rm_present_registration_config($registration_config),
+        'addon_rows'                  => $addon_rows,
+        'addon_columns'               => $addon_columns,
+        'addon_label_singular'        => $addon_label_singular,
+        'addon_label_plural'          => $addon_label_plural,
+        'addon_total'                 => $addon_total,
+        'addon_error'                 => $addon_error,
         'promotions'                  => $promotions,
         'deleted_promotions'          => $deleted_promotions,
         'active_package_count'        => $active_package_count,

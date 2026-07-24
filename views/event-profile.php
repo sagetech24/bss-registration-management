@@ -108,7 +108,7 @@ if (!empty($event_card['categories']) && is_array($event_card['categories'])) {
         </div>
     </div>
 
-    <?php if ($profile_tab !== 'registrants') : ?>
+    <?php if (!in_array($profile_tab, ['registrants', 'addons'], true)) : ?>
     <div class="grid grid-cols-2 lg:grid-cols-5 gap-3">
         <?php
         $stat_tiles = [
@@ -156,6 +156,8 @@ if (!empty($event_card['categories']) && is_array($event_card['categories'])) {
             <?php include __DIR__ . '/partials/event-profile-promo-codes.php'; ?>
         <?php elseif ($profile_tab === 'registrants') : ?>
             <?php include __DIR__ . '/partials/event-profile-registrants.php'; ?>
+        <?php elseif ($profile_tab === 'addons') : ?>
+            <?php include __DIR__ . '/partials/event-profile-addons.php'; ?>
         <?php elseif ($profile_tab === 'custom-form') : ?>
             <?php include __DIR__ . '/partials/event-profile-custom-form.php'; ?>
         <?php else : ?>

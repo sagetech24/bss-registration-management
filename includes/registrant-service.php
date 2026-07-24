@@ -307,6 +307,228 @@ function rm_present_guest_row(array $registrant): array
 }
 
 /**
+ * Map a guest form field key to the normalized registrant property / custom key.
+ */
+function rm_addon_field_value_key(string $field_key): string
+{
+    $map = [
+        'christian_name'   => 'christianName',
+        'given_name'       => 'givenName',
+        'family_name'      => 'familyName',
+        'certificate_name' => 'certificateName',
+        'church_name'      => 'churchName',
+        'email'            => 'email',
+        'contact'          => 'contact',
+        'title'            => 'title',
+        'nric'             => 'nric',
+        'address1'         => 'address1',
+        'address2'         => 'address2',
+        'postcode'         => 'postcode',
+    ];
+
+    return $map[$field_key] ?? $field_key;
+}
+
+/**
+ * Read a single field value from a normalized addon registrant row.
+ *
+ * @param array<string, mixed> $registrant
+ */
+function rm_addon_field_display_value(array $registrant, string $field_key): string
+{
+    $name_keys = ['christian_name', 'given_name', 'family_name', 'christianName', 'givenName', 'familyName'];
+    if (in_array($field_key, $name_keys, true)) {
+        return '';
+    }
+
+    $prop = rm_addon_field_value_key($field_key);
+    $core_keys = [
+        'christianName', 'givenName', 'familyName', 'certificateName', 'churchName',
+        'email', 'contact', 'title', 'nric', 'address1', 'address2', 'postcode',
+    ];
+
+    if (in_array($prop, $core_keys, true)) {
+        return trim((string) ($registrant[$prop] ?? ''));
+    }
+
+    $custom = [];
+    $note = $registrant['note'] ?? '';
+    if (is_string($note) && $note !== '' && $note !== '{}') {
+        $decoded = json_decode($note, true);
+        if (is_array($decoded)) {
+            $custom = $decoded;
+        }
+    }
+
+    if (!array_key_exists($field_key, $custom) && !array_key_exists($prop, $custom)) {
+        return '';
+    }
+
+    $value = $custom[$field_key] ?? $custom[$prop] ?? '';
+    if (is_bool($value)) {
+        return $value ? 'Yes' : 'No';
+    }
+    if (is_array($value)) {
+        return implode(', ', array_map('strval', $value));
+    }
+
+    return trim((string) $value);
+}
+
+/**
+ * Build table columns from the event guest form schema (excludes name fields shown as Name).
+ *
+ * @param array<string, mixed>|null $event
+ * @return list<array{key: string, label: string}>
+ */
+function rm_event_addon_field_columns(?array $event): array
+{
+    if (!is_array($event)) {
+        return [];
+    }
+
+    $config = rm_parse_registration_config($event);
+    $stored_fields = isset($config['guests']['form']['fields']) && is_array($config['guests']['form']['fields'])
+        ? $config['guests']['form']['fields']
+        : [];
+    $core_defs = rm_form_core_field_definitions();
+    $fields = rm_form_normalize_fields($stored_fields, $core_defs);
+
+    usort($fields, static function (array $a, array $b): int {
+        return ((int) ($a['order'] ?? 0)) <=> ((int) ($b['order'] ?? 0));
+    });
+
+    $skip = ['christian_name', 'given_name', 'family_name'];
+    $columns = [];
+
+    foreach ($fields as $field) {
+        if (!is_array($field)) {
+            continue;
+        }
+        $key = sanitize_key((string) ($field['key'] ?? ''));
+        if ($key === '' || in_array($key, $skip, true)) {
+            continue;
+        }
+        $label = trim((string) ($field['label'] ?? ''));
+        if ($label === '') {
+            $label = ucwords(str_replace(['_', '-'], ' ', $key));
+        }
+        $columns[] = [
+            'key'   => $key,
+            'label' => $label,
+        ];
+    }
+
+    return $columns;
+}
+
+/**
+ * Present all addon (guest) rows for the event admin addons tab.
+ *
+ * @param array<int, array<string, mixed>> $registrants
+ * @param array<string, mixed>|null $event
+ * @return array{
+ *   rows: list<array<string, mixed>>,
+ *   columns: list<array{key: string, label: string}>,
+ *   label_singular: string,
+ *   label_plural: string,
+ *   total: int
+ * }
+ */
+function rm_present_event_addon_rows(array $registrants, ?array $event = null): array
+{
+    $label_singular = 'Guest';
+    $label_plural = 'Guests';
+    if (is_array($event)) {
+        $config = rm_parse_registration_config($event);
+        $guests = is_array($config['guests'] ?? null) ? $config['guests'] : [];
+        $label_singular = trim((string) ($guests['label_singular'] ?? 'Guest'));
+        $label_plural = trim((string) ($guests['label_plural'] ?? 'Guests'));
+        if ($label_singular === '') {
+            $label_singular = 'Guest';
+        }
+        if ($label_plural === '') {
+            $label_plural = 'Guests';
+        }
+    }
+
+    $columns = rm_event_addon_field_columns($event);
+
+    $primaries_by_registration = [];
+    foreach ($registrants as $row) {
+        if (!is_array($row) || ($row['_role'] ?? '') !== 'primary') {
+            continue;
+        }
+        $registration_id = isset($row['_registration_id']) ? (int) $row['_registration_id'] : 0;
+        if ($registration_id < 1) {
+            continue;
+        }
+        $christian_name = trim((string) ($row['christianName'] ?? ''));
+        $given_name = trim((string) ($row['givenName'] ?? ''));
+        $first_name = $christian_name !== '' ? $christian_name : $given_name;
+        $last_name = trim((string) ($row['familyName'] ?? ''));
+        $full_name = trim($first_name . ' ' . $last_name);
+        $primaries_by_registration[$registration_id] = [
+            'full_name'    => $full_name !== '' ? $full_name : 'N/A',
+            'order_number' => trim((string) ($row['orderNumber'] ?? '')),
+        ];
+    }
+
+    $rows = [];
+    foreach ($registrants as $row) {
+        if (!is_array($row) || ($row['_role'] ?? '') !== 'addon') {
+            continue;
+        }
+
+        $guest = rm_present_guest_row($row);
+        $registration_id = isset($row['_registration_id']) ? (int) $row['_registration_id'] : 0;
+        $primary = $primaries_by_registration[$registration_id] ?? [
+            'full_name'    => 'N/A',
+            'order_number' => '',
+        ];
+
+        $field_values = [];
+        foreach ($columns as $column) {
+            $field_values[$column['key']] = rm_addon_field_display_value($row, $column['key']);
+        }
+
+        $payment_status = trim((string) ($row['_payment_status'] ?? ''));
+        $is_paid = !empty($row['_is_paid']);
+        $date_raw = (string) ($row['datestamp'] ?? '');
+        $date_display = $date_raw !== '' ? rm_format_payment_transaction_datetime($date_raw) : '—';
+
+        $rows[] = [
+            'registrant_id'          => $guest['registrant_id'],
+            'order_number'           => $guest['order_number'] !== '' ? $guest['order_number'] : 'N/A',
+            'full_name'              => $guest['full_name'],
+            'role_label'             => $label_singular,
+            'amount_display'         => $guest['amount_display'],
+            'primary_name'           => $primary['full_name'],
+            'primary_order_number'   => $primary['order_number'],
+            'payment_status'         => $payment_status,
+            'payment_status_label'   => $payment_status !== ''
+                ? ucwords(str_replace('_', ' ', $payment_status))
+                : '—',
+            'is_paid'                => $is_paid,
+            'date_display'           => $date_display,
+            'package_label'          => trim((string) ($row['_package_label'] ?? 'Individual')) !== ''
+                ? (string) ($row['_package_label'] ?? 'Individual')
+                : 'Individual',
+            'field_values'           => $field_values,
+            'fields'                 => $guest['fields'],
+        ];
+    }
+
+    return [
+        'rows'           => $rows,
+        'columns'        => $columns,
+        'label_singular' => $label_singular,
+        'label_plural'   => $label_plural,
+        'total'          => count($rows),
+    ];
+}
+
+/**
  * Exclude addon (guest) rows — table shows primary and member only.
  *
  * @param array<int, array<string, mixed>> $registrants
