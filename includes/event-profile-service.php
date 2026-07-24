@@ -510,7 +510,7 @@ function rm_build_event_profile_context(array $events_by_year, string $requested
         'total_revenue' => 0.0,
     ];
     $package_summary = [];
-    $profile_tabs = rm_event_profile_tabs_for_event($registration_config);
+    $profile_tabs = rm_event_profile_tabs_for_event($registration_config, $selected_event);
     $profile_tab = rm_get_event_profile_tab();
     if (!array_key_exists($profile_tab, $profile_tabs)) {
         $profile_tab = 'packages';

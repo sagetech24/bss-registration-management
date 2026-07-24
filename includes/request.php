@@ -393,12 +393,15 @@ function rm_event_profile_tabs(): array
 
 /**
  * Event profile tabs for a specific event — includes the addons tab only when
- * Accept Guests is enabled, labelled with guests.label_plural.
+ * Accept Guests is enabled, labelled with guests.label_plural and usage count.
+ *
+ * Examples: "Workmates (4)", "Workmates (4/30)" when event_max is set.
  *
  * @param array<string, mixed>|null $registration_config
+ * @param array<string, mixed>|null $event
  * @return array<string, string>
  */
-function rm_event_profile_tabs_for_event(?array $registration_config = null): array
+function rm_event_profile_tabs_for_event(?array $registration_config = null, ?array $event = null): array
 {
     $tabs = rm_event_profile_tabs();
     $guests = is_array($registration_config['guests'] ?? null) ? $registration_config['guests'] : [];
@@ -410,7 +413,23 @@ function rm_event_profile_tabs_for_event(?array $registration_config = null): ar
     }
 
     $plural = trim((string) ($guests['label_plural'] ?? 'Guests'));
-    $tabs['addons'] = $plural !== '' ? $plural : 'Guests';
+    if ($plural === '') {
+        $plural = 'Guests';
+    }
+
+    $used = 0;
+    $event_max = max(0, (int) ($guests['event_max'] ?? 0));
+    if (is_array($event) && function_exists('rm_guest_event_capacity')) {
+        $capacity = rm_guest_event_capacity($event);
+        $used = (int) ($capacity['used'] ?? 0);
+        $event_max = max(0, (int) ($capacity['event_max'] ?? $event_max));
+    }
+
+    if ($event_max > 0) {
+        $tabs['addons'] = sprintf('%s (%d/%d)', $plural, $used, $event_max);
+    } else {
+        $tabs['addons'] = sprintf('%s (%d)', $plural, $used);
+    }
 
     return $tabs;
 }
