@@ -20,6 +20,7 @@ $member_input = is_array($member_input ?? null) ? $member_input : [];
 $registration_config = is_array($registration_config ?? null) ? $registration_config : [];
 $manage_token = (string) ($manage_token ?? '');
 $page_url = (string) ($page_url ?? '');
+$event_landing_href = (string) ($event_landing_href ?? '');
 $event_currency = (string) ($event_currency ?? 'SGD');
 $locale = (string) ($locale ?? 'en');
 $ui_strings = is_array($ui_strings ?? null) ? $ui_strings : (function_exists('rm_public_ui_strings') ? rm_public_ui_strings($locale) : []);
@@ -67,6 +68,17 @@ $t = static function (string $key) use ($ui_strings, $locale): string {
             <?php elseif ($error_message !== '') : ?>
                 <div class="p-4 bg-rose-50 border border-rose-200 rounded-lg text-rose-800 text-sm">
                     <?php echo esc_html($error_message); ?>
+                </div>
+            <?php endif; ?>
+
+            <?php if ($event_landing_href !== '') : ?>
+                <div class="border-t border-slate-200 pt-4">
+                    <a
+                        href="<?php echo esc_url($event_landing_href); ?>"
+                        class="inline-flex items-center justify-center rounded-lg border border-slate-300 bg-white px-5 py-2.5 text-sm font-medium text-slate-700 hover:bg-slate-50 transition"
+                    >
+                        <?php echo esc_html($t('manage.close_page')); ?>
+                    </a>
                 </div>
             <?php endif; ?>
         </div>
