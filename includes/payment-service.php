@@ -632,6 +632,39 @@ function rm_payment_api_request(string $method, string $path, string $environmen
 }
 
 /**
+ * HitPay checkout purpose: event title, plus promotion package when present.
+ *
+ * Examples:
+ * - "You are registering D6 Family 2027 - Couple Early Bird promotion package"
+ * - "You are registering D6 Family 2027"
+ */
+function rm_payment_build_checkout_purpose(string $event_title, int $pending_id): string
+{
+    $event_title = trim($event_title);
+    $purpose = 'You are registering ' . ($event_title !== '' ? $event_title : 'this event');
+
+    if ($pending_id < 1 || !function_exists('rm_v2_load_pending_header')) {
+        return $purpose;
+    }
+
+    $header = rm_v2_load_pending_header($pending_id);
+    if ($header === null) {
+        return $purpose;
+    }
+
+    $package_label = function_exists('rm_package_label_from_header')
+        ? trim(rm_package_label_from_header($header))
+        : '';
+
+    // "Individual" means no promotion package — same rule as confirmation emails.
+    if ($package_label !== '' && strcasecmp($package_label, 'Individual') !== 0) {
+        $purpose .= ' - ' . $package_label;
+    }
+
+    return $purpose;
+}
+
+/**
  * @param array<string, mixed> $event
  * @param array<string, string> $registrant
  * @return array{ok: bool, id: string, url: string, error: string}
@@ -653,7 +686,6 @@ function rm_payment_create_request(
         ($registrant['christianName'] ?? '') . ' ' . ($registrant['familyName'] ?? '')
     );
     $title = isset($event['title']) ? sanitize_text_field((string) $event['title']) : '';
-    $start_date = isset($event['startDate']) ? (string) $event['startDate'] : '';
 
     // v2 registrations use their confirmation number as the HitPay reference;
     // legacy pendings have no confirmation number and keep the RM-{pending}-{event} format.
@@ -684,7 +716,9 @@ function rm_payment_create_request(
         'name'                    => $full_name,
         'email'                   => $registrant['email'] ?? '',
         'phone'                   => $registrant['contact'] ?? '',
-        'purpose'                 => $title . '_' . $reference . '_' . $start_date,
+        'purpose'                 => sanitize_text_field(
+            rm_payment_build_checkout_purpose($title, $pending_id)
+        ),
         'reference_number'        => $reference,
         'allow_repeated_payments' => false,
         'expires_after'           => '3 days',
