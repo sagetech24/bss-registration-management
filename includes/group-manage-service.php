@@ -179,14 +179,31 @@ function rm_manage_group_url(array $args = []): string
         'action' => 'manage-group',
     ];
 
-    if (!isset($args['lang']) && isset($_GET['lang'])) {
-        $lang = rm_normalize_locale((string) wp_unslash($_GET['lang']));
-        if ($lang !== '') {
-            $defaults['lang'] = $lang;
+    if (!isset($args['lang'])) {
+        $request_lang = rm_get_request_lang();
+        if ($request_lang !== '') {
+            $defaults['lang'] = $request_lang;
         }
     }
 
     return add_query_arg(array_merge($defaults, $args), rm_page_url());
+}
+
+/**
+ * @param array<string, string|int> $extra
+ */
+function rm_manage_group_page_url(string $event_code, string $locale, string $token = '', array $extra = []): string
+{
+    $args = array_merge([
+        'event_code' => $event_code,
+        'lang'       => $locale,
+    ], $extra);
+
+    if ($token !== '') {
+        $args['t'] = $token;
+    }
+
+    return rm_manage_group_url($args);
 }
 
 /**
@@ -400,12 +417,12 @@ function rm_group_manage_load_member_lines(int $registration_id): array
  *   can_add: bool
  * }
  */
-function rm_group_manage_resolve_access(int $event_id = 0): array
+function rm_group_manage_resolve_access(int $event_id = 0, string $locale = RM_LOCALE_EN): array
 {
-    $fail = static function (string $error, bool $needs_login = true): array {
+    $fail = static function (string $error_key, bool $needs_login = true) use ($locale): array {
         return [
             'ok'          => false,
-            'error'       => $error,
+            'error'       => $error_key !== '' ? rm__($error_key, $locale) : '',
             'header'      => null,
             'needs_login' => $needs_login,
             'can_add'     => false,
@@ -442,7 +459,7 @@ function rm_group_manage_resolve_access(int $event_id = 0): array
                 : '';
             $header = rm_group_manage_find_by_credentials($confirmation, $email, $event_id);
             if ($header === null) {
-                return $fail('No registration found for that confirmation number and email.');
+                return $fail('manage.error.login_not_found');
             }
             rm_group_manage_set_session((int) $header['id']);
         }
@@ -453,22 +470,22 @@ function rm_group_manage_resolve_access(int $event_id = 0): array
     }
 
     if ($event_id > 0 && (int) ($header['event_id'] ?? 0) !== $event_id) {
-        return $fail('This registration does not belong to this event.');
+        return $fail('manage.error.wrong_event');
     }
 
     $payment_status = strtolower(trim((string) ($header['payment_status'] ?? '')));
     if (!in_array($payment_status, ['paid', 'free'], true)) {
-        return $fail('This registration is not paid yet.', false);
+        return $fail('manage.error.not_paid', false);
     }
 
     $mode = (string) ($header['registration_mode'] ?? '');
     if ($mode !== RM_REGISTRATION_MODE_GROUP_FLAT) {
-        return $fail('Member management is only available for flat group packages.', false);
+        return $fail('manage.error.not_group_flat', false);
     }
 
     $limits = rm_group_limits_from_header($header);
     if (!empty($limits['require_all_members'])) {
-        return $fail('This package required all members at checkout.', false);
+        return $fail('manage.error.require_all_at_checkout', false);
     }
 
     rm_group_manage_set_session((int) $header['id']);
@@ -501,7 +518,7 @@ function rm_group_add_rate_limited(int $registration_id): bool
  * @param array<string, mixed> $member_responses
  * @return array{ok: bool, error: string, form_errors: array<string, string>}
  */
-function rm_group_add_member(array $header, array $event, array $member_responses): array
+function rm_group_add_member(array $header, array $event, array $member_responses, string $locale = RM_LOCALE_EN): array
 {
     global $wpdb;
 
@@ -511,7 +528,7 @@ function rm_group_add_member(array $header, array $event, array $member_response
     if ($registration_id < 1 || $event_id < 1) {
         return [
             'ok'          => false,
-            'error'       => 'Invalid registration.',
+            'error'       => rm__('manage.error.invalid_registration', $locale),
             'form_errors' => [],
         ];
     }
@@ -519,7 +536,7 @@ function rm_group_add_member(array $header, array $event, array $member_response
     if (rm_group_add_rate_limited($registration_id)) {
         return [
             'ok'          => false,
-            'error'       => 'Too many add-member attempts. Please try again later.',
+            'error'       => rm__('manage.error.rate_limited', $locale),
             'form_errors' => [],
         ];
     }
@@ -527,12 +544,12 @@ function rm_group_add_member(array $header, array $event, array $member_response
     if (!rm_group_is_incomplete($header)) {
         return [
             'ok'          => false,
-            'error'       => 'This group roster is already complete.',
+            'error'       => rm__('manage.error.roster_complete', $locale),
             'form_errors' => [],
         ];
     }
 
-    $schema = rm_parse_form_schema($event);
+    $schema = rm_parse_form_schema($event, $locale);
     $build = rm_build_member_rows_from_responses($schema, [$member_responses]);
     if (!$build['ok']) {
         $form_errors = [];
@@ -551,7 +568,7 @@ function rm_group_add_member(array $header, array $event, array $member_response
     if (!is_array($member_row)) {
         return [
             'ok'          => false,
-            'error'       => 'Invalid member data.',
+            'error'       => rm__('manage.error.invalid_member_data', $locale),
             'form_errors' => [],
         ];
     }
@@ -575,7 +592,7 @@ function rm_group_add_member(array $header, array $event, array $member_response
 
         return [
             'ok'          => false,
-            'error'       => 'Registration could not be found.',
+            'error'       => rm__('manage.error.registration_not_found', $locale),
             'form_errors' => [],
         ];
     }
@@ -585,7 +602,7 @@ function rm_group_add_member(array $header, array $event, array $member_response
 
         return [
             'ok'          => false,
-            'error'       => 'This group roster is already complete.',
+            'error'       => rm__('manage.error.roster_complete', $locale),
             'form_errors' => [],
         ];
     }
@@ -693,7 +710,7 @@ function rm_group_add_member(array $header, array $event, array $member_response
  * @param list<array<string, mixed>> $lines
  * @return list<array<string, mixed>>
  */
-function rm_group_manage_present_members(array $lines): array
+function rm_group_manage_present_members(array $lines, string $locale = RM_LOCALE_EN): array
 {
     $out = [];
     foreach ($lines as $line) {
@@ -702,25 +719,35 @@ function rm_group_manage_present_members(array $lines): array
         }
 
         if (function_exists('rm_email_present_person_line')) {
-            $out[] = rm_email_present_person_line($line);
-            continue;
+            $presented = rm_email_present_person_line($line);
+        } else {
+            $given = trim((string) ($line['given_name'] ?? ''));
+            $family = trim((string) ($line['family_name'] ?? ''));
+            $christian = trim((string) ($line['christian_name'] ?? ''));
+            $full = trim($christian !== '' ? $christian . ' ' . $family : $given . ' ' . $family);
+            $role = (string) ($line['role'] ?? 'member');
+
+            $presented = [
+                'full_name'    => $full !== '' ? $full : 'Registrant',
+                'email'        => (string) ($line['email'] ?? ''),
+                'contact'      => (string) ($line['contact'] ?? ''),
+                'church_name'  => (string) ($line['church_name'] ?? ''),
+                'order_number' => (string) ($line['order_number'] ?? ''),
+                'role'         => $role,
+                'role_label'   => $role === 'primary' ? 'Leader' : 'Member',
+            ];
         }
 
-        $given = trim((string) ($line['given_name'] ?? ''));
-        $family = trim((string) ($line['family_name'] ?? ''));
-        $christian = trim((string) ($line['christian_name'] ?? ''));
-        $full = trim($christian !== '' ? $christian . ' ' . $family : $given . ' ' . $family);
-        $role = (string) ($line['role'] ?? 'member');
+        $role = (string) ($presented['role'] ?? 'member');
+        if ($role === 'primary') {
+            $presented['role_label'] = rm__('manage.role_leader', $locale);
+        } elseif ($role === 'addon') {
+            $presented['role_label'] = rm__('email.role.guest', $locale);
+        } else {
+            $presented['role_label'] = rm__('manage.role_member', $locale);
+        }
 
-        $out[] = [
-            'full_name'    => $full !== '' ? $full : 'Registrant',
-            'email'        => (string) ($line['email'] ?? ''),
-            'contact'      => (string) ($line['contact'] ?? ''),
-            'church_name'  => (string) ($line['church_name'] ?? ''),
-            'order_number' => (string) ($line['order_number'] ?? ''),
-            'role'         => $role,
-            'role_label'   => $role === 'primary' ? 'Leader' : 'Member',
-        ];
+        $out[] = $presented;
     }
 
     return $out;
@@ -732,12 +759,11 @@ function rm_group_manage_present_members(array $lines): array
 function rm_build_manage_group_context(): array
 {
     $event_code = rm_get_event_code();
-    $page_url = rm_manage_group_url($event_code !== '' ? ['event_code' => $event_code] : []);
 
     $context = [
         'view_action'       => 'manage-group',
         'is_public_layout'  => true,
-        'page_url'          => $page_url,
+        'page_url'          => rm_manage_group_url($event_code !== '' ? ['event_code' => $event_code] : []),
         'event_code'        => $event_code,
         'event'             => null,
         'event_present'     => null,
@@ -764,10 +790,13 @@ function rm_build_manage_group_context(): array
         'registration_config' => [],
         'event_currency'    => 'SGD',
         'manage_token'      => rm_group_manage_get_token_from_request(),
+        'locale'            => RM_LOCALE_EN,
+        'html_lang'         => 'en',
+        'ui_strings'        => [],
     ];
 
     if ($event_code === '') {
-        $context['error_message'] = 'No event was selected. Please use a valid manage-group link.';
+        $context['error_message'] = rm__('manage.error.no_event', RM_LOCALE_EN);
         $context['event_not_found'] = true;
 
         return $context;
@@ -781,7 +810,7 @@ function rm_build_manage_group_context(): array
     if ($event === null) {
         $context['error_message'] = $event_fetch['error'] !== ''
             ? $event_fetch['error']
-            : 'This event could not be found.';
+            : rm__('manage.error.event_not_found', RM_LOCALE_EN);
         $context['event_not_found'] = true;
 
         return $context;
@@ -790,13 +819,19 @@ function rm_build_manage_group_context(): array
     $context['event'] = $event;
     $context['event_present'] = rm_present_registration_event($event);
     $context['event_currency'] = rm_registration_currency($event);
-    $context['locale'] = rm_resolve_locale($event, rm_get_request_lang() !== '' ? rm_get_request_lang() : null);
+    $request_lang = rm_get_request_lang();
+    $context['locale'] = rm_resolve_locale($event, $request_lang !== '' ? $request_lang : null);
     $context['html_lang'] = rm_locale_html_lang($context['locale']);
     $context['ui_strings'] = rm_public_ui_strings($context['locale']);
     $context['form_schema'] = rm_parse_form_schema($event, $context['locale']);
     $context['registration_config'] = rm_parse_registration_config($event);
+    $context['page_url'] = rm_manage_group_page_url($event_code, $context['locale']);
+    $context['event_landing_href'] = function_exists('rm_event_landing_url')
+        ? rm_event_landing_url($event)
+        : home_url('/');
 
     $event_id = isset($event['id']) ? (int) $event['id'] : 0;
+    $locale = $context['locale'];
 
     if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $nonce_ok = isset($_POST['rm_group_manage_nonce'])
@@ -806,14 +841,14 @@ function rm_build_manage_group_context(): array
             );
 
         if (!$nonce_ok) {
-            $context['error_message'] = 'Your session has expired. Please try again.';
+            $context['error_message'] = rm__('manage.error.session_expired', $locale);
             $context['needs_login'] = true;
 
             return $context;
         }
     }
 
-    $access = rm_group_manage_resolve_access($event_id);
+    $access = rm_group_manage_resolve_access($event_id, $locale);
     $context['needs_login'] = !empty($access['needs_login']);
     $context['access_ok'] = !empty($access['ok']);
     $context['can_add'] = !empty($access['can_add']);
@@ -835,7 +870,8 @@ function rm_build_manage_group_context(): array
     $context['group_meta'] = rm_group_incomplete_meta($header);
     $context['can_add'] = !empty($context['group_meta']['incomplete']);
     $context['members'] = rm_group_manage_present_members(
-        rm_group_manage_load_member_lines((int) $header['id'])
+        rm_group_manage_load_member_lines((int) $header['id']),
+        $locale
     );
 
     $token = rm_group_manage_get_token_from_request();
@@ -843,10 +879,7 @@ function rm_build_manage_group_context(): array
         $token = rm_group_manage_token_create((int) $header['id']);
     }
     $context['manage_token'] = $token;
-    $context['page_url'] = rm_manage_group_url([
-        'event_code' => $event_code,
-        't'          => $token,
-    ]);
+    $context['page_url'] = rm_manage_group_page_url($event_code, $locale, $token);
 
     if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
         return $context;
@@ -857,7 +890,7 @@ function rm_build_manage_group_context(): array
         : '';
 
     if ($post_action === 'login') {
-        $context['success_message'] = 'Group registration loaded.';
+        $context['success_message'] = rm__('manage.success.loaded', $locale);
 
         return $context;
     }
@@ -867,7 +900,7 @@ function rm_build_manage_group_context(): array
     }
 
     if (!$context['can_add']) {
-        $context['error_message'] = 'This group roster is already complete.';
+        $context['error_message'] = rm__('manage.error.roster_complete', $locale);
 
         return $context;
     }
@@ -891,7 +924,7 @@ function rm_build_manage_group_context(): array
 
     $context['member_input'] = $member_responses;
 
-    $result = rm_group_add_member($header, $event, $member_responses);
+    $result = rm_group_add_member($header, $event, $member_responses, $locale);
     if (!$result['ok']) {
         $context['error_message'] = $result['error'];
         $context['form_errors'] = $result['form_errors'];
@@ -906,15 +939,16 @@ function rm_build_manage_group_context(): array
         $context['group_meta'] = rm_group_incomplete_meta($header);
         $context['can_add'] = !empty($context['group_meta']['incomplete']);
         $context['members'] = rm_group_manage_present_members(
-            rm_group_manage_load_member_lines((int) $header['id'])
+            rm_group_manage_load_member_lines((int) $header['id']),
+            $locale
         );
     }
 
     $context['member_input'] = [];
     $context['form_errors'] = [];
     $context['success_message'] = $context['can_add']
-        ? 'Member added successfully. You can add more remaining members.'
-        : 'Member added successfully. Your group roster is now complete.';
+        ? rm__('manage.success.member_added_more', $locale)
+        : rm__('manage.success.member_added_done', $locale);
 
     return $context;
 }

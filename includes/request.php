@@ -330,11 +330,18 @@ function rm_registration_url(array $args = []): string
  */
 function rm_get_request_lang(): string
 {
-    if (!isset($_GET['lang'])) {
-        return '';
+    if (isset($_GET['lang'])) {
+        $from_get = rm_normalize_locale((string) wp_unslash($_GET['lang']));
+        if ($from_get !== '') {
+            return $from_get;
+        }
     }
 
-    return rm_normalize_locale((string) wp_unslash($_GET['lang']));
+    if (isset($_POST['lang'])) {
+        return rm_normalize_locale((string) wp_unslash($_POST['lang']));
+    }
+
+    return '';
 }
 
 function rm_get_registration_flash_key(): string
