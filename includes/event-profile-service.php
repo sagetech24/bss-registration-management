@@ -227,8 +227,10 @@ function rm_handle_save_registration_settings_post(int $event_id, string $source
     $input = wp_unslash([
         'mode'                    => $_POST['mode'] ?? null,
         'coverage'                => $_POST['coverage'] ?? null,
+        'locale'                  => $_POST['locale'] ?? null,
         'form_preset'             => $_POST['form_preset'] ?? null,
         'form_fields'             => $_POST['form_fields'] ?? null,
+        'field_overrides'         => $_POST['field_overrides'] ?? [],
         'custom_fields'           => $_POST['custom_fields'] ?? null,
         'custom_fields_submitted' => $_POST['custom_fields_submitted'] ?? null,
         'group_min'               => $_POST['group_min'] ?? null,

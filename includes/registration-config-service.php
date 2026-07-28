@@ -211,10 +211,12 @@ function rm_registration_config_defaults(): array
         'version'  => RM_REGISTRATION_VERSION,
         'mode'     => RM_REGISTRATION_MODE_INDIVIDUAL,
         'coverage' => RM_EVENT_COVERAGE_LOCAL,
+        'locale'   => RM_LOCALE_EN,
         'form'     => [
-            'preset' => RM_FORM_PRESET_FULL,
-            'fields' => [],
-            'scope'  => 'per_member',
+            'preset'          => RM_FORM_PRESET_FULL,
+            'fields'          => [],
+            'field_overrides' => [],
+            'scope'           => 'per_member',
         ],
         'group'    => [
             'min' => 1,
@@ -400,6 +402,11 @@ function rm_parse_registration_config(array $event): array
         ? $coverage
         : RM_EVENT_COVERAGE_LOCAL;
 
+    $locale = function_exists('rm_normalize_locale')
+        ? rm_normalize_locale((string) ($config['locale'] ?? RM_LOCALE_EN))
+        : RM_LOCALE_EN;
+    $config['locale'] = $locale !== '' ? $locale : RM_LOCALE_EN;
+
     if (!in_array($config['form']['preset'], rm_form_presets(), true)) {
         $config['form']['preset'] = RM_FORM_PRESET_FULL;
     }
@@ -407,6 +414,11 @@ function rm_parse_registration_config(array $event): array
     if (!is_array($config['form']['fields'])) {
         $config['form']['fields'] = [];
     }
+
+    if (!isset($config['form']['field_overrides']) || !is_array($config['form']['field_overrides'])) {
+        $config['form']['field_overrides'] = [];
+    }
+    $config['form']['field_overrides'] = rm_normalize_field_overrides($config['form']['field_overrides']);
 
     $config['group']['min'] = max(1, (int) ($config['group']['min'] ?? 1));
     $config['group']['max'] = max($config['group']['min'], (int) ($config['group']['max'] ?? $config['group']['min']));
@@ -544,6 +556,47 @@ function rm_present_registration_config(array $config): array
 }
 
 /**
+ * Normalize admin field label/placeholder overrides for core fields.
+ *
+ * @param mixed $raw
+ * @return array<string, array{label: string, placeholder: string}>
+ */
+function rm_normalize_field_overrides(mixed $raw): array
+{
+    if (!is_array($raw)) {
+        return [];
+    }
+
+    $core_defs = function_exists('rm_form_core_field_definitions')
+        ? rm_form_core_field_definitions()
+        : [];
+    $out = [];
+
+    foreach ($raw as $key => $row) {
+        $field_key = sanitize_key((string) $key);
+        if ($field_key === '' || ($core_defs !== [] && !isset($core_defs[$field_key]))) {
+            continue;
+        }
+        if (!is_array($row)) {
+            continue;
+        }
+
+        $label = sanitize_text_field(wp_unslash((string) ($row['label'] ?? '')));
+        $placeholder = sanitize_text_field(wp_unslash((string) ($row['placeholder'] ?? '')));
+        if ($label === '' && $placeholder === '') {
+            continue;
+        }
+
+        $out[$field_key] = [
+            'label'       => $label,
+            'placeholder' => $placeholder,
+        ];
+    }
+
+    return $out;
+}
+
+/**
  * Build a sanitized registration config block from staff form input.
  *
  * @param array<string, mixed> $input
@@ -573,6 +626,13 @@ function rm_normalize_registration_settings_input(array $input, array $existing_
             'error'        => 'Invalid event coverage.',
             'registration' => [],
         ];
+    }
+
+    $locale = isset($input['locale'])
+        ? rm_normalize_locale((string) $input['locale'])
+        : rm_normalize_locale((string) ($existing['locale'] ?? RM_LOCALE_EN));
+    if ($locale === '' || !in_array($locale, rm_supported_locales(), true)) {
+        $locale = RM_LOCALE_EN;
     }
 
     $preset = isset($input['form_preset'])
@@ -635,6 +695,13 @@ function rm_normalize_registration_settings_input(array $input, array $existing_
     $existing_scope = isset($existing['form']['scope']) && is_string($existing['form']['scope'])
         ? $existing['form']['scope']
         : 'per_member';
+
+    $field_overrides = [];
+    if (array_key_exists('field_overrides', $input)) {
+        $field_overrides = rm_normalize_field_overrides($input['field_overrides'] ?? []);
+    } elseif (isset($existing['form']['field_overrides']) && is_array($existing['form']['field_overrides'])) {
+        $field_overrides = rm_normalize_field_overrides($existing['form']['field_overrides']);
+    }
 
     if ($preset === RM_FORM_PRESET_CUSTOM) {
         $core_defs = rm_form_core_field_definitions();
@@ -793,8 +860,10 @@ function rm_normalize_registration_settings_input(array $input, array $existing_
     $registration['version'] = RM_REGISTRATION_VERSION;
     $registration['mode'] = $mode;
     $registration['coverage'] = $coverage;
+    $registration['locale'] = $locale;
     $registration['form']['preset'] = $preset;
     $registration['form']['fields'] = $form_fields;
+    $registration['form']['field_overrides'] = $field_overrides;
     $registration['form']['scope'] = $existing_scope;
     $registration['group']['min'] = $group_min;
     $registration['group']['max'] = $group_max;

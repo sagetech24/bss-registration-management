@@ -315,7 +315,26 @@ function rm_registration_url(array $args = []): string
         'action' => 'register',
     ];
 
+    if (!isset($args['lang']) && isset($_GET['lang'])) {
+        $lang = rm_normalize_locale((string) wp_unslash($_GET['lang']));
+        if ($lang !== '') {
+            $defaults['lang'] = $lang;
+        }
+    }
+
     return add_query_arg(array_merge($defaults, $args), rm_page_url());
+}
+
+/**
+ * Current request lang query value when valid.
+ */
+function rm_get_request_lang(): string
+{
+    if (!isset($_GET['lang'])) {
+        return '';
+    }
+
+    return rm_normalize_locale((string) wp_unslash($_GET['lang']));
 }
 
 function rm_get_registration_flash_key(): string

@@ -7,7 +7,7 @@
  * @param list<array<string, mixed>> $members_responses
  * @return array{ok: bool, error: string, member_rows: list<array{core: array<string, string|null>, custom: array<string, mixed>}>, form_errors: array<string, string>}
  */
-function rm_build_member_rows_from_responses(array $schema, array $members_responses): array
+function rm_build_member_rows_from_responses(array $schema, array $members_responses, string $locale = 'en'): array
 {
     $member_rows = [];
     $all_errors = [];
@@ -19,7 +19,7 @@ function rm_build_member_rows_from_responses(array $schema, array $members_respo
             continue;
         }
 
-        $errors = rm_validate_form_responses($schema, $responses);
+        $errors = rm_validate_form_responses($schema, $responses, $locale);
         if ($errors !== []) {
             foreach ($errors as $key => $message) {
                 $all_errors['member_' . $index . '_' . $key] = $message;
@@ -33,7 +33,9 @@ function rm_build_member_rows_from_responses(array $schema, array $members_respo
     if ($all_errors !== []) {
         return [
             'ok'          => false,
-            'error'       => 'Please correct the highlighted fields.',
+            'error'       => function_exists('rm__')
+                ? rm__('validation.required', $locale, ['field' => 'Form'])
+                : 'Please correct the highlighted fields.',
             'member_rows' => [],
             'form_errors' => $all_errors,
         ];
@@ -53,7 +55,10 @@ function rm_build_member_rows_from_responses(array $schema, array $members_respo
  */
 function rm_submit_v2_registration(array $event): array
 {
-    $schema = rm_parse_form_schema($event);
+    $locale = rm_resolve_locale($event, rm_get_request_lang() !== '' ? rm_get_request_lang() : (
+        isset($_POST['lang']) ? (string) wp_unslash($_POST['lang']) : null
+    ));
+    $schema = rm_parse_form_schema($event, $locale);
     $resolved = rm_resolve_registration_promotion($event);
     if (!$resolved['ok']) {
         return [
@@ -89,7 +94,7 @@ function rm_submit_v2_registration(array $event): array
         }
     }
 
-    $build = rm_build_member_rows_from_responses($schema, $members_responses);
+    $build = rm_build_member_rows_from_responses($schema, $members_responses, $locale);
     if (!$build['ok']) {
         return [
             'ok'           => false,
@@ -107,7 +112,7 @@ function rm_submit_v2_registration(array $event): array
         $guest_responses = rm_parse_guests_from_post();
         if ($guest_responses !== []) {
             $guest_schema = rm_parse_guest_form_schema($event);
-            $guest_build = rm_build_member_rows_from_responses($guest_schema, $guest_responses);
+            $guest_build = rm_build_member_rows_from_responses($guest_schema, $guest_responses, $locale);
             if (!$guest_build['ok']) {
                 return [
                     'ok'           => false,
@@ -129,7 +134,8 @@ function rm_submit_v2_registration(array $event): array
         $pricing,
         $schema,
         $promotion,
-        $guest_rows
+        $guest_rows,
+        $locale
     );
 
     return [

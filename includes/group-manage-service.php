@@ -179,6 +179,13 @@ function rm_manage_group_url(array $args = []): string
         'action' => 'manage-group',
     ];
 
+    if (!isset($args['lang']) && isset($_GET['lang'])) {
+        $lang = rm_normalize_locale((string) wp_unslash($_GET['lang']));
+        if ($lang !== '') {
+            $defaults['lang'] = $lang;
+        }
+    }
+
     return add_query_arg(array_merge($defaults, $args), rm_page_url());
 }
 
@@ -783,7 +790,10 @@ function rm_build_manage_group_context(): array
     $context['event'] = $event;
     $context['event_present'] = rm_present_registration_event($event);
     $context['event_currency'] = rm_registration_currency($event);
-    $context['form_schema'] = rm_parse_form_schema($event);
+    $context['locale'] = rm_resolve_locale($event, rm_get_request_lang() !== '' ? rm_get_request_lang() : null);
+    $context['html_lang'] = rm_locale_html_lang($context['locale']);
+    $context['ui_strings'] = rm_public_ui_strings($context['locale']);
+    $context['form_schema'] = rm_parse_form_schema($event, $context['locale']);
     $context['registration_config'] = rm_parse_registration_config($event);
 
     $event_id = isset($event['id']) ? (int) $event['id'] : 0;

@@ -335,10 +335,75 @@ function rm_form_normalize_admin_custom_fields_input(mixed $rows): array
 }
 
 /**
+ * Apply admin overrides and locale catalog labels/placeholders to schema fields.
+ *
+ * @param list<array<string, mixed>> $fields
+ * @param array<string, array{label?: string, placeholder?: string}> $overrides
+ * @return list<array<string, mixed>>
+ */
+function rm_form_apply_locale_and_overrides(array $fields, array $overrides, string $locale): array
+{
+    $core_defs = rm_form_core_field_definitions();
+    $locale = function_exists('rm_normalize_locale') ? rm_normalize_locale($locale) : 'en';
+    if ($locale === '') {
+        $locale = 'en';
+    }
+
+    foreach ($fields as &$field) {
+        if (!is_array($field) || empty($field['key'])) {
+            continue;
+        }
+        $key = sanitize_key((string) $field['key']);
+        $is_core = isset($core_defs[$key]);
+
+        if ($is_core) {
+            $override = isset($overrides[$key]) && is_array($overrides[$key]) ? $overrides[$key] : [];
+            $override_label = trim((string) ($override['label'] ?? ''));
+            $override_placeholder = trim((string) ($override['placeholder'] ?? ''));
+
+            if ($override_label !== '') {
+                $field['label'] = $override_label;
+            } elseif (function_exists('rm__')) {
+                $field['label'] = rm__('fields.' . $key . '.label', $locale);
+            }
+
+            if ($override_placeholder !== '') {
+                $field['placeholder'] = $override_placeholder;
+            } elseif (function_exists('rm__')) {
+                $field['placeholder'] = rm__('fields.' . $key . '.placeholder', $locale);
+            }
+
+            if ($key === 'title' && !empty($field['options']) && is_array($field['options']) && function_exists('rm__')) {
+                $localized_options = [];
+                foreach ($field['options'] as $option) {
+                    if (!is_array($option)) {
+                        continue;
+                    }
+                    $value = (string) ($option['value'] ?? '');
+                    if ($value === '') {
+                        continue;
+                    }
+                    $localized_options[] = [
+                        'value' => $value,
+                        'label' => rm__('title.' . $value, $locale),
+                    ];
+                }
+                if ($localized_options !== []) {
+                    $field['options'] = $localized_options;
+                }
+            }
+        }
+    }
+    unset($field);
+
+    return $fields;
+}
+
+/**
  * @param array<string, mixed> $event
  * @return array{fields: list<array<string, mixed>>, preset: string, scope: string}
  */
-function rm_parse_form_schema(array $event): array
+function rm_parse_form_schema(array $event, ?string $locale = null): array
 {
     $config = rm_parse_registration_config($event);
     $form = $config['form'];
@@ -346,6 +411,15 @@ function rm_parse_form_schema(array $event): array
     $scope = (string) ($form['scope'] ?? 'per_member');
     $stored_fields = is_array($form['fields']) ? $form['fields'] : [];
     $core_defs = rm_form_core_field_definitions();
+    $overrides = isset($form['field_overrides']) && is_array($form['field_overrides'])
+        ? $form['field_overrides']
+        : [];
+
+    if ($locale === null) {
+        $locale = function_exists('rm_resolve_locale')
+            ? rm_resolve_locale($event)
+            : (string) ($config['locale'] ?? 'en');
+    }
 
     if ($preset === RM_FORM_PRESET_CUSTOM) {
         if ($stored_fields !== []) {
@@ -363,6 +437,8 @@ function rm_parse_form_schema(array $event): array
             }
         }
     }
+
+    $fields = rm_form_apply_locale_and_overrides($fields, $overrides, $locale);
 
     usort($fields, static function (array $a, array $b): int {
         return ((int) ($a['order'] ?? 0)) <=> ((int) ($b['order'] ?? 0));
@@ -616,7 +692,7 @@ function rm_form_normalize_options(array $options): array
  * @param array<string, mixed> $responses
  * @return array<string, string>
  */
-function rm_validate_form_responses(array $schema, array $responses): array
+function rm_validate_form_responses(array $schema, array $responses, string $locale = 'en'): array
 {
     $errors = [];
     $allowed_keys = [];
@@ -629,7 +705,7 @@ function rm_validate_form_responses(array $schema, array $responses): array
 
         $allowed_keys[$key] = true;
         $value = $responses[$key] ?? null;
-        $field_errors = rm_validate_form_field_value($field, $value);
+        $field_errors = rm_validate_form_field_value($field, $value, $locale);
         foreach ($field_errors as $field_key => $message) {
             $errors[$field_key] = $message;
         }
@@ -640,7 +716,9 @@ function rm_validate_form_responses(array $schema, array $responses): array
             continue;
         }
 
-        $errors[$response_key] = 'Unknown field.';
+        $errors[$response_key] = function_exists('rm__')
+            ? rm__('validation.unknown_field', $locale)
+            : 'Unknown field.';
     }
 
     return $errors;
@@ -649,16 +727,20 @@ function rm_validate_form_responses(array $schema, array $responses): array
 /**
  * @return array<string, string>
  */
-function rm_validate_form_field_value(array $field, mixed $value): array
+function rm_validate_form_field_value(array $field, mixed $value, string $locale = 'en'): array
 {
     $key = (string) ($field['key'] ?? '');
     $type = (string) ($field['type'] ?? 'text');
     $required = !empty($field['required']);
     $errors = [];
+    $label = (string) ($field['label'] ?? $key);
+    $t = static function (string $msg_key, array $replace = []) use ($locale): string {
+        return function_exists('rm__') ? rm__($msg_key, $locale, $replace) : $msg_key;
+    };
 
     if ($type === 'checkbox') {
         if ($required && empty($value)) {
-            $errors[$key] = ($field['label'] ?? $key) . ' is required.';
+            $errors[$key] = $t('validation.required', ['field' => $label]);
         }
 
         return $errors;
@@ -666,12 +748,12 @@ function rm_validate_form_field_value(array $field, mixed $value): array
 
     if ($type === 'checkbox_group') {
         if ($required && (!is_array($value) || $value === [])) {
-            $errors[$key] = ($field['label'] ?? $key) . ' is required.';
+            $errors[$key] = $t('validation.required', ['field' => $label]);
         } elseif (is_array($value)) {
             $allowed = rm_form_option_values($field);
             foreach ($value as $item) {
                 if (!in_array((string) $item, $allowed, true)) {
-                    $errors[$key] = 'Invalid selection for ' . ($field['label'] ?? $key) . '.';
+                    $errors[$key] = $t('validation.invalid_selection', ['field' => $label]);
                     break;
                 }
             }
@@ -683,7 +765,7 @@ function rm_validate_form_field_value(array $field, mixed $value): array
     $string_value = is_scalar($value) ? trim((string) $value) : '';
 
     if ($required && $string_value === '') {
-        $errors[$key] = ($field['label'] ?? $key) . ' is required.';
+        $errors[$key] = $t('validation.required', ['field' => $label]);
 
         return $errors;
     }
@@ -695,22 +777,22 @@ function rm_validate_form_field_value(array $field, mixed $value): array
     switch ($type) {
         case 'email':
             if (!is_email($string_value)) {
-                $errors[$key] = 'Please enter a valid email address.';
+                $errors[$key] = $t('validation.email');
             }
             break;
 
         case 'number':
             if (!is_numeric($string_value)) {
-                $errors[$key] = ($field['label'] ?? $key) . ' must be a number.';
+                $errors[$key] = $t('validation.must_be_number', ['field' => $label]);
                 break;
             }
             $num = (float) $string_value;
             $validation = is_array($field['validation'] ?? null) ? $field['validation'] : [];
             if (isset($validation['min']) && is_numeric($validation['min']) && $num < (float) $validation['min']) {
-                $errors[$key] = ($field['label'] ?? $key) . ' must be at least ' . $validation['min'] . '.';
+                $errors[$key] = $t('validation.min_value', ['field' => $label, 'min' => $validation['min']]);
             }
             if (isset($validation['max']) && is_numeric($validation['max']) && $num > (float) $validation['max']) {
-                $errors[$key] = ($field['label'] ?? $key) . ' must be at most ' . $validation['max'] . '.';
+                $errors[$key] = $t('validation.max_value', ['field' => $label, 'max' => $validation['max']]);
             }
             break;
 
@@ -718,14 +800,14 @@ function rm_validate_form_field_value(array $field, mixed $value): array
         case 'radio':
             $allowed = rm_form_option_values($field);
             if (!in_array($string_value, $allowed, true)) {
-                $errors[$key] = 'Invalid selection for ' . ($field['label'] ?? $key) . '.';
+                $errors[$key] = $t('validation.invalid_selection', ['field' => $label]);
             }
             break;
 
         case 'date':
             $parsed = strtotime($string_value);
             if ($parsed === false) {
-                $errors[$key] = 'Please enter a valid date.';
+                $errors[$key] = $t('validation.date');
             }
             break;
 
@@ -734,10 +816,10 @@ function rm_validate_form_field_value(array $field, mixed $value): array
         case 'textarea':
             $validation = is_array($field['validation'] ?? null) ? $field['validation'] : [];
             if (!empty($validation['maxLength']) && strlen($string_value) > (int) $validation['maxLength']) {
-                $errors[$key] = ($field['label'] ?? $key) . ' is too long.';
+                $errors[$key] = $t('validation.required', ['field' => $label]);
             }
             if (!empty($validation['pattern']) && preg_match('/' . $validation['pattern'] . '/', $string_value) !== 1) {
-                $errors[$key] = ($field['label'] ?? $key) . ' format is invalid.';
+                $errors[$key] = $t('validation.invalid_selection', ['field' => $label]);
             }
             break;
     }

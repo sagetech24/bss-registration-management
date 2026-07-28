@@ -3,6 +3,7 @@
 require_once __DIR__ . '/../wp-load.php';
 
 require_once __DIR__ . '/includes/schema-install.php';
+require_once __DIR__ . '/includes/i18n-service.php';
 require_once __DIR__ . '/includes/registration-config-service.php';
 require_once __DIR__ . '/includes/form-schema-service.php';
 require_once __DIR__ . '/includes/event-promotion-service.php';

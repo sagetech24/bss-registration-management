@@ -29,11 +29,16 @@ $input_class = 'w-full rounded-lg border border-slate-300 bg-white px-3 py-2 tex
 $phone_local_class = 'w-full rounded-r-lg rounded-l-none border border-slate-300 bg-white px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none';
 $phone_dial_class = 'min-w-[6rem] rounded-l-lg rounded-r-none border border-r-0 border-slate-300 bg-slate-50 px-2 py-2 text-sm text-slate-700 focus:border-indigo-500 focus:outline-none';
 $phone_fixed_class = 'inline-flex items-center rounded-l-lg border border-r-0 border-slate-300 bg-slate-50 px-3 text-sm text-slate-600';
+$locale = (string) ($locale ?? 'en');
+$ui_strings = is_array($ui_strings ?? null) ? $ui_strings : rm_public_ui_strings($locale);
+$strings_json = wp_json_encode($ui_strings);
 ?>
+
+<input type="hidden" name="lang" value="<?php echo esc_attr($locale); ?>" />
 
 <div
     x-data="rmRegisterWizard()"
-    x-init="init(<?php echo esc_attr($schema_json); ?>, <?php echo esc_attr($limits_json); ?>, <?php echo esc_attr($members_json); ?>, <?php echo esc_attr($pricing_json); ?>, <?php echo esc_attr($guest_schema_json); ?>, <?php echo esc_attr($guests_json); ?>, <?php echo esc_attr(wp_json_encode($event_currency)); ?>, <?php echo esc_attr($coverage_json); ?>, <?php echo esc_attr($phone_codes_json); ?>, <?php echo esc_attr(wp_json_encode($mode)); ?>)"
+    x-init="init(<?php echo esc_attr($schema_json); ?>, <?php echo esc_attr($limits_json); ?>, <?php echo esc_attr($members_json); ?>, <?php echo esc_attr($pricing_json); ?>, <?php echo esc_attr($guest_schema_json); ?>, <?php echo esc_attr($guests_json); ?>, <?php echo esc_attr(wp_json_encode($event_currency)); ?>, <?php echo esc_attr($coverage_json); ?>, <?php echo esc_attr($phone_codes_json); ?>, <?php echo esc_attr(wp_json_encode($mode)); ?>, <?php echo esc_attr($strings_json); ?>)"
     class="space-y-6"
 >
     <div class="flex flex-wrap items-center gap-2 text-sm text-slate-600">
@@ -62,7 +67,9 @@ $phone_fixed_class = 'inline-flex items-center rounded-l-lg border border-r-0 bo
             <div x-show="step === 0" class="space-y-4">
                 <fieldset class="rounded-lg border border-slate-200 p-4 space-y-4">
                     <legend class="text-sm font-medium text-slate-700 px-1">
-                        <?php echo esc_html($mode === 'group_flat' || $mode === 'group_per_head' ? 'Registration Leader Information' : 'Registration Information'); ?>
+                        <?php echo esc_html($mode === 'group_flat' || $mode === 'group_per_head'
+                            ? ($ui_strings['wizard.heading.leader_info'] ?? 'Registration Leader Information')
+                            : ($ui_strings['wizard.heading.registration_info'] ?? 'Registration Information')); ?>
                     </legend>
                     <div class="grid grid-cols-1 sm:grid-cols-2 gap-5">
                         <template x-for="field in schema.fields" :key="'leader-' + field.key">
@@ -138,14 +145,14 @@ $phone_fixed_class = 'inline-flex items-center rounded-l-lg border border-r-0 bo
                     </div>
                 </fieldset>
                 <div class="pt-2 flex justify-end">
-                    <button type="button" @click="nextFromLeader()" class="rounded-lg bg-indigo-700 px-5 py-2.5 text-sm font-medium text-white hover:bg-indigo-800">Next</button>
+                    <button type="button" @click="nextFromLeader()" class="rounded-lg bg-indigo-700 px-5 py-2.5 text-sm font-medium text-white hover:bg-indigo-800" x-text="t('wizard.btn.next')"></button>
                 </div>
             </div>
 
             <div x-show="step === 1" class="space-y-4">
                 <h3 class="text-sm text-slate-700" x-text="membersStepHeading"></h3>
                 <p class="text-sm text-slate-500" x-show="!isIndividual">
-                    <span class="italic font-medium">Note:</span>
+                    <span class="italic font-medium" x-text="t('wizard.note.prefix')"></span>
                     This package requires exactly <span x-text="limits.max"></span> registrant(s). Please fill up the additional information below
                 </p>
 
@@ -157,7 +164,7 @@ $phone_fixed_class = 'inline-flex items-center rounded-l-lg border border-r-0 bo
 
                     <template x-for="(member, mIndex) in members" :key="'wrap-' + mIndex">
                         <div x-show="mIndex > 0" class="rounded-lg border border-slate-200 p-4 space-y-4">
-                            <h4 class="text-sm font-medium text-slate-800">Member <span x-text="mIndex + 1"></span></h4>
+                            <h4 class="text-sm font-medium text-slate-800"><span x-text="t('wizard.heading.member')"></span> <span x-text="mIndex + 1"></span></h4>
                             <div class="grid grid-cols-1 sm:grid-cols-2 gap-5">
                                 <template x-for="field in schema.fields" :key="'m-' + mIndex + '-' + field.key">
                                     <div :class="wideField(field) ? 'sm:col-span-2' : ''">
@@ -238,13 +245,13 @@ $phone_fixed_class = 'inline-flex items-center rounded-l-lg border border-r-0 bo
                             x-show="!limits.require_all_members && members.length < limits.max"
                             @click="addMember()"
                             class="rounded-lg border border-indigo-200 bg-indigo-50 px-4 py-2 text-sm font-medium text-indigo-700 hover:bg-indigo-100"
-                        >Add member</button>
+                        x-text="t('wizard.btn.add_member')"></button>
                         <button
                             type="button"
                             x-show="!limits.require_all_members && members.length > limits.min"
                             @click="removeMember()"
                             class="rounded-lg border border-slate-200 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
-                        >Remove last member</button>
+                        x-text="t('wizard.btn.remove_last_member')"></button>
                         <!-- <p x-show="limits.require_all_members" class="text-sm text-slate-500">
                             This package requires exactly <span x-text="limits.max"></span> registrant(s).
                         </p> -->
@@ -257,17 +264,13 @@ $phone_fixed_class = 'inline-flex items-center rounded-l-lg border border-r-0 bo
                             <span x-text="guestSchema.label_plural || 'Guests'"></span>
                             Registration Add-On
                         </h3>
-                        <p class="text-sm text-slate-500" x-show="!isIndividual">
-                            Event package allows to register <span x-text="guestSchema.label_plural || 'Guests'"></span>. Please fill up the additional information below
-                        </p>
+                        <p class="text-sm text-slate-500" x-show="!isIndividual" x-text="t('wizard.guests.intro', { guests: guestSchema.label_plural || t('wizard.step.guests') })"></p>
                         <p
                             class="text-sm text-slate-500"
                             x-show="guestSchema.event_max > 0 && guestSchema.remaining !== null && guestSchema.remaining > 0 && guestSchema.remaining < guestSchema.event_max"
                             x-cloak
-                        >
-                            <span x-text="guestSchema.remaining"></span> of <span x-text="guestSchema.event_max"></span>
-                            <span x-text="(guestSchema.label_plural || 'guest').toLowerCase()"></span> slot(s) remaining for this event.
-                        </p>
+                            x-text="t('wizard.guests.slots_remaining', { count: guestSchema.remaining + ' / ' + guestSchema.event_max })"
+                        ></p>
                         <fieldset class="rounded-lg border border-slate-200 p-4 space-y-4">
                             <legend class="text-sm font-medium text-slate-700 px-1">
                                 <span x-text="guestSchema.label_plural || 'Guests'"></span>
@@ -360,7 +363,7 @@ $phone_fixed_class = 'inline-flex items-center rounded-l-lg border border-r-0 bo
                                     @click="addGuest()"
                                     class="rounded-lg border border-indigo-200 bg-indigo-50 px-4 py-2 text-sm font-medium text-indigo-700 hover:bg-indigo-100"
                                 >
-                                    Add <span x-text="(guestSchema.label_singular || 'Guest').toLowerCase()"></span>
+                                    <span x-text="t('wizard.btn.add_guest', { guest: (guestSchema.label_singular || t('wizard.step.guests')).toLowerCase() })"></span>
                                 </button>
                                 <button
                                     type="button"
@@ -376,13 +379,13 @@ $phone_fixed_class = 'inline-flex items-center rounded-l-lg border border-r-0 bo
                 </template>
 
                 <div class="pt-2 flex justify-between">
-                    <button type="button" @click="step = 0" class="text-sm font-medium text-slate-700 hover:text-slate-900">Back</button>
-                    <button type="button" @click="nextToSummary()" class="rounded-lg bg-indigo-700 px-5 py-2.5 text-sm font-medium text-white hover:bg-indigo-800">Next</button>
+                    <button type="button" @click="step = 0" class="text-sm font-medium text-slate-700 hover:text-slate-900" x-text="t('wizard.btn.back')"></button>
+                    <button type="button" @click="nextToSummary()" class="rounded-lg bg-indigo-700 px-5 py-2.5 text-sm font-medium text-white hover:bg-indigo-800" x-text="t('wizard.btn.next')"></button>
                 </div>
             </div>
 
             <div x-show="step === 2" class="space-y-4">
-                <h3 class="text-base font-semibold text-slate-900">Review Summary & Checkout</h3>
+                <h3 class="text-base font-semibold text-slate-900" x-text="t('wizard.heading.review')"></h3>
                 <div class="rounded-lg border border-slate-200 divide-y divide-slate-100">
                     <template x-for="(member, index) in members" :key="'summary-' + index">
                         <div class="p-4 flex items-start justify-between gap-4">
@@ -407,19 +410,19 @@ $phone_fixed_class = 'inline-flex items-center rounded-l-lg border border-r-0 bo
                     </template>
                 </div>
                 <div class="flex items-center justify-between rounded-lg bg-slate-50 border border-slate-200 p-4">
-                    <span class="text-sm font-medium text-slate-700">Total (estimated)</span>
+                    <span class="text-sm font-medium text-slate-700" x-text="t('wizard.total_estimated')"></span>
                     <span class="text-lg font-semibold text-slate-900" x-text="totalDisplay"></span>
                 </div>
-                <p class="text-xs text-slate-500">Final amount is calculated on the server when you submit.</p>
+                <p class="text-xs text-slate-500" x-text="t('wizard.final_amount_note')"></p>
                 <div class="pt-2 flex justify-between">
-                    <button type="button" @click="backFromSummary()" class="text-sm font-medium text-slate-700 hover:text-slate-900">Back</button>
+                    <button type="button" @click="backFromSummary()" class="text-sm font-medium text-slate-700 hover:text-slate-900" x-text="t('wizard.btn.back')"></button>
                     <template x-if="step === 2">
                         <button
                             type="submit"
                             :disabled="isSubmitting"
                             class="rounded-lg bg-indigo-700 px-5 py-2.5 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-60"
                             :class="!isSubmitting && 'hover:bg-indigo-800'"
-                            x-text="isSubmitting ? 'Checking out....' : 'Checkout'"
+                            x-text="isSubmitting ? t('wizard.btn.checking_out') : t('wizard.btn.checkout')"
                         ></button>
                     </template>
                 </div>
@@ -442,12 +445,12 @@ function rmRegisterWizard() {
         },
         get stepLabels() {
             if (this.isIndividual && this.guestSchema.enabled) {
-                return ['Registrant', (this.guestSchema.label_plural || 'Guests'), 'Review Summary & Checkout'];
+                return [this.t('wizard.step.registrant'), (this.guestSchema.label_plural || this.t('wizard.step.guests')), this.t('wizard.step.review')];
             }
             if (this.isIndividual) {
-                return ['Registrant', 'Review Summary & Checkout'];
+                return [this.t('wizard.step.registrant'), this.t('wizard.step.review')];
             }
-            return ['Leader', 'Members', 'Review Summary & Checkout'];
+            return [this.t('wizard.step.leader'), this.t('wizard.step.members'), this.t('wizard.step.review')];
         },
         get stepperIndex() {
             if (this.skipsMembersStep) {
@@ -457,11 +460,11 @@ function rmRegisterWizard() {
         },
         get membersStepHeading() {
             if (!this.isIndividual) {
-                return 'Additional Member';
+                return this.t('wizard.summary.additional_member');
             }
-            const addonName = this.guestSchema.label_plural || this.guestSchema.label_singular || 'Guest';
-            const optional = this.guestSchema.min === 0 ? ' (Optional)' : '';
-            return 'Event package allows to register ' + addonName + '. Kindly fill-up the additional information below.' + optional;
+            const addonName = this.guestSchema.label_plural || this.guestSchema.label_singular || this.t('wizard.step.guests');
+            const optional = this.guestSchema.min === 0 ? this.t('wizard.summary.guest_intro_optional') : '';
+            return this.t('wizard.summary.guest_intro', { guests: addonName }) + optional;
         },
         schema: { fields: [] },
         guestSchema: { fields: [], enabled: false, label_singular: 'Guest', label_plural: 'Guests', min: 0, max: 0, event_max: 0, used: 0, remaining: null, price: 0 },
@@ -477,11 +480,20 @@ function rmRegisterWizard() {
         currency: 'SGD',
         coverage: 'local',
         phoneCountryCodes: [],
+        strings: {},
+        t(key, replace = {}) {
+            let text = (this.strings && this.strings[key]) ? this.strings[key] : key;
+            Object.keys(replace || {}).forEach((name) => {
+                text = text.split('{' + name + '}').join(String(replace[name]));
+            });
+            return text;
+        },
         get defaultDial() {
             return '+65';
         },
-        init(schema, limits, members, pricing, guestSchema, guestsInput, currency, coverage, phoneCountryCodes, mode) {
+        init(schema, limits, members, pricing, guestSchema, guestsInput, currency, coverage, phoneCountryCodes, mode, strings) {
             this.mode = mode || 'group_flat';
+            this.strings = strings || {};
             this.schema = schema || { fields: [] };
             this.guestSchema = Object.assign(
                 { fields: [], enabled: false, label_singular: 'Guest', label_plural: 'Guests', min: 0, max: 0, price: 0 },
@@ -657,39 +669,39 @@ function rmRegisterWizard() {
         },
         fieldValidationMessage(field, data) {
             if (!field || !data) return '';
-            const label = field.label || field.key || 'This field';
+            const label = field.label || field.key || this.t('wizard.this_field');
             if (field.type === 'phone') {
                 this.syncPhone(data, field.key);
             }
 
             const val = data[field.key];
             if (field.type === 'checkbox') {
-                return field.required && !val ? (label + ' is required.') : '';
+                return field.required && !val ? this.t('validation.required', { field: label }) : '';
             }
             if (field.type === 'checkbox_group') {
                 return field.required && (!Array.isArray(val) || !val.length)
-                    ? (label + ' is required.')
+                    ? this.t('validation.required', { field: label })
                     : '';
             }
 
             const stringValue = val === null || val === undefined ? '' : String(val).trim();
             if (field.required && stringValue === '') {
-                return label + ' is required.';
+                return this.t('validation.required', { field: label });
             }
             if (stringValue === '') {
                 return '';
             }
 
             if (this.isEmailField(field) && !this.isValidEmail(stringValue)) {
-                return 'Please enter a valid email address.';
+                return this.t('validation.email');
             }
 
             if (field.type === 'number' && Number.isNaN(Number(stringValue))) {
-                return label + ' must be a number.';
+                return this.t('validation.must_be_number', { field: label });
             }
 
             if (field.type === 'date' && Number.isNaN(Date.parse(stringValue))) {
-                return 'Please enter a valid date.';
+                return this.t('validation.date');
             }
 
             if (field.type === 'phone' || field.key === 'contact' || field.maps_to === 'contact') {
@@ -699,15 +711,15 @@ function rmRegisterWizard() {
                     : digits.replace(/^65/, '');
                 if (this.coverage === 'international') {
                     if (localDigits.length < 6 || localDigits.length > 15) {
-                        return 'Please enter a valid contact number.';
+                        return this.t('validation.contact');
                     }
                 } else if (localDigits.length !== 8) {
-                    return 'Please enter a valid 8-digit contact number.';
+                    return this.t('validation.contact_sg');
                 }
             }
 
             if ((field.key === 'nric' || field.maps_to === 'nric') && !/^[0-9]{4}$/.test(stringValue)) {
-                return 'Please enter the last 4 digits of your NRIC.';
+                return this.t('validation.nric');
             }
 
             if (
@@ -715,7 +727,7 @@ function rmRegisterWizard() {
                 && (field.key === 'postcode' || field.maps_to === 'postcode')
                 && !/^[0-9]{6}$/.test(stringValue)
             ) {
-                return 'Please enter a valid 6-digit postal code.';
+                return this.t('validation.postcode');
             }
 
             return '';
@@ -756,7 +768,7 @@ function rmRegisterWizard() {
         },
         nextToSummary() {
             if (this.limits.require_all_members && this.members.length !== this.limits.max) {
-                alert('This package requires exactly ' + this.limits.max + ' registrant(s).');
+                alert(this.t('wizard.alert.exact_registrants', { count: this.limits.max }));
                 return;
             }
 
@@ -779,7 +791,7 @@ function rmRegisterWizard() {
             if (this.guestSchema.enabled) {
                 const gLabel = (this.guestSchema.label_singular || 'guest').toLowerCase();
                 if (this.guests.length < this.guestSchema.min) {
-                    alert('At least ' + this.guestSchema.min + ' ' + gLabel + '(s) required.');
+                    alert(this.t('wizard.alert.min_guests', { count: this.guestSchema.min, guest: gLabel }));
                     return;
                 }
                 for (let g = 0; g < this.guests.length; g++) {
@@ -796,9 +808,9 @@ function rmRegisterWizard() {
         memberLabel(member, index) {
             const name = [member.given_name, member.family_name].filter(Boolean).join(' ');
             if (this.isIndividual) {
-                return (name ? name : 'Registrant');
+                return (name ? name : this.t('wizard.role.registrant'));
             }
-            return (index === 0 ? 'Leader' : 'Member ' + (index + 1)) + (name ? ': ' + name : '');
+            return (index === 0 ? this.t('wizard.role.leader') : this.t('wizard.role.member_n', { n: index + 1 })) + (name ? ': ' + name : '');
         },
         guestLabel(guest, index) {
             const name = [guest.given_name, guest.family_name].filter(Boolean).join(' ');
@@ -806,7 +818,7 @@ function rmRegisterWizard() {
             return label + ' ' + (index + 1) + (name ? ': ' + name : '');
         },
         formatCurrency(amount) {
-            if (amount <= 0) return 'FREE';
+            if (amount <= 0) return this.t('wizard.free');
             const decimals = amount % 1 === 0 ? 0 : 2;
             return this.currency + ' ' + amount.toFixed(decimals);
         },
@@ -851,7 +863,7 @@ function rmRegisterWizard() {
             if (this.limits.require_all_members && this.members.length !== this.limits.max) {
                 if (event) event.preventDefault();
                 this.step = 1;
-                alert('This package requires exactly ' + this.limits.max + ' registrant(s).');
+                alert(this.t('wizard.alert.exact_registrants', { count: this.limits.max }));
                 return;
             }
 
@@ -876,7 +888,7 @@ function rmRegisterWizard() {
                 if (this.guests.length < this.guestSchema.min) {
                     if (event) event.preventDefault();
                     this.step = 1;
-                    alert('At least ' + this.guestSchema.min + ' ' + gLabel + '(s) required.');
+                    alert(this.t('wizard.alert.min_guests', { count: this.guestSchema.min, guest: gLabel }));
                     return;
                 }
                 for (let g = 0; g < this.guests.length; g++) {

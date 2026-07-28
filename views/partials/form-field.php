@@ -57,7 +57,12 @@ if ($key === '' || $type === 'hidden') {
             <?php echo $required ? 'required' : ''; ?>
             class="<?php echo esc_attr($field_class); ?>"
         >
-            <option value=""><?php echo esc_html($placeholder !== '' ? $placeholder : 'Please select'); ?></option>
+            <option value=""><?php
+                $please_select = function_exists('rm__')
+                    ? rm__('form.please_select', (string) ($locale ?? 'en'))
+                    : 'Please select';
+                echo esc_html($placeholder !== '' ? $placeholder : $please_select);
+            ?></option>
             <?php foreach (($field['options'] ?? []) as $option) : ?>
                 <?php
                 $opt_value = is_array($option) ? (string) ($option['value'] ?? '') : (string) $option;

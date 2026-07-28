@@ -20,6 +20,20 @@ $registration_receipt = is_array($registration_receipt ?? null) ? $registration_
 $error_message = (string) ($error_message ?? '');
 $responses = $members_input[0] ?? rm_form_empty_responses($form_schema);
 $privacy_policy_url = function_exists('get_privacy_policy_url') ? get_privacy_policy_url() : '';
+$locale = (string) ($locale ?? 'en');
+$ui_strings = is_array($ui_strings ?? null) ? $ui_strings : rm_public_ui_strings($locale);
+$t = static function (string $key, array $replace = []) use ($ui_strings, $locale): string {
+    if (isset($ui_strings[$key])) {
+        $text = $ui_strings[$key];
+        foreach ($replace as $name => $value) {
+            $text = str_replace('{' . $name . '}', (string) $value, $text);
+        }
+
+        return $text;
+    }
+
+    return rm__($key, $locale, $replace);
+};
 ?>
 
 <section class="space-y-6">
@@ -31,7 +45,7 @@ $privacy_policy_url = function_exists('get_privacy_policy_url') ? get_privacy_po
             <?php if ($individual_href !== '') : ?>
                 <p class="mt-4 text-sm text-slate-600">
                     <a href="<?php echo esc_url($individual_href); ?>" class="font-medium text-indigo-700 hover:text-indigo-900">
-                        Register individually instead
+                        <?php echo esc_html($t('register.individual_instead')); ?>
                     </a>
                 </p>
             <?php endif; ?>
@@ -46,7 +60,7 @@ $privacy_policy_url = function_exists('get_privacy_policy_url') ? get_privacy_po
                         <p class="font-medium"><?php echo esc_html($success_message); ?></p>
                         <?php if ($order_number !== '') : ?>
                             <p class="mt-2 text-sm">
-                                Your order number:
+                                <?php echo esc_html($t('register.order_number')); ?>:
                                 <span class="font-semibold"><?php echo esc_html($order_number); ?></span>
                             </p>
                         <?php endif; ?>
@@ -81,7 +95,7 @@ $privacy_policy_url = function_exists('get_privacy_policy_url') ? get_privacy_po
                         <?php if ($mode !== 'individual') : ?>
                             <p class="mt-3 text-sm">
                                 <a href="<?php echo esc_url($individual_href); ?>" class="font-medium text-indigo-700 hover:text-indigo-900">
-                                    Register individually instead
+                                    <?php echo esc_html($t('register.individual_instead')); ?>
                                 </a>
                             </p>
                         <?php endif; ?>
@@ -111,6 +125,7 @@ $privacy_policy_url = function_exists('get_privacy_policy_url') ? get_privacy_po
 
                         <form method="post" action="<?php echo esc_url($page_url); ?>" class="space-y-5">
                             <?php wp_nonce_field('rm_register', 'rm_register_nonce'); ?>
+                            <input type="hidden" name="lang" value="<?php echo esc_attr($locale); ?>" />
                             <?php if ($active_promotion !== null) : ?>
                                 <input type="hidden" name="event_promotion_id" value="<?php echo esc_attr((string) (int) $active_promotion['id']); ?>" />
                             <?php endif; ?>
@@ -132,7 +147,7 @@ $privacy_policy_url = function_exists('get_privacy_policy_url') ? get_privacy_po
                                     type="submit"
                                     class="w-full sm:w-auto rounded-lg bg-indigo-700 px-5 py-2.5 text-sm font-medium text-white hover:bg-indigo-800 transition"
                                 >
-                                    Checkout
+                                    <?php echo esc_html($t('wizard.btn.checkout')); ?>
                                 </button>
                                 <a
                                     href="<?php echo esc_url($page_url); ?>"
@@ -141,22 +156,14 @@ $privacy_policy_url = function_exists('get_privacy_policy_url') ? get_privacy_po
                                     <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="size-6">
                                         <path stroke-linecap="round" stroke-linejoin="round" d="M6.75 15.75 3 12m0 0 3.75-3.75M3 12h18" />
                                     </svg>
-                                    Back
+                                    <?php echo esc_html($t('wizard.btn.back')); ?>
                                 </a>
                             </div>
                         </form>
                     </div>
                 <?php endif; ?>
                 <p class="text-xs text-slate-500 leading-relaxed mt-4">
-                    * By providing your contact details, you consent to our collection, use and disclosure of your personal data as described in our
-                    <?php if ($privacy_policy_url !== '') : ?>
-                        <a href="<?php echo esc_url($privacy_policy_url); ?>" class="font-medium text-indigo-700 hover:text-indigo-900">
-                            privacy policy
-                        </a>
-                    <?php else : ?>
-                        privacy policy
-                    <?php endif; ?>
-                    on our website. We do strive to limit the amount of personal data we collect to that which is sufficient to support the intended purpose of the collection.
+                    * <?php echo esc_html($t('register.privacy')); ?>
                 </p>
             <?php endif; ?>
         </div>

@@ -62,7 +62,12 @@ function rm_email_send_payment_confirmation(string $order_number): array
     }
 
     $event_title = trim((string) ($context['event']['title'] ?? 'Event'));
-    $subject = sanitize_text_field($event_title . ' — Registration confirmed (' . $order_number . ')');
+    $locale = (string) ($context['locale'] ?? 'en');
+    $subject = sanitize_text_field(rm__(
+        'email.subject',
+        $locale,
+        ['event' => $event_title, 'order' => $order_number]
+    ));
 
     $body = rm_email_render('payment-confirmation', $context);
     if ($body === '') {
@@ -362,6 +367,24 @@ function rm_email_load_v2_confirmation_context(string $order_number): ?array
         $manage_group_url = rm_group_manage_url_for_header($header, $event_code);
     }
 
+    $locale = 'en';
+    $snapshot_raw = $header['form_schema_snapshot'] ?? null;
+    if (is_string($snapshot_raw) && trim($snapshot_raw) !== '') {
+        $decoded_snap = json_decode($snapshot_raw, true);
+        if (is_array($decoded_snap) && !empty($decoded_snap['locale'])) {
+            $locale = rm_normalize_locale((string) $decoded_snap['locale']);
+            if ($locale === '') {
+                $locale = 'en';
+            }
+        }
+    }
+    if ($locale === 'en' && is_array($event) && function_exists('rm_resolve_locale')) {
+        $locale = rm_resolve_locale($event);
+    }
+    if ($manage_group_url !== '' && function_exists('rm_url_with_lang')) {
+        $manage_group_url = rm_url_with_lang($manage_group_url, $locale);
+    }
+
     return [
         'source'              => 'v2',
         'registration_id'     => $registration_id,
@@ -377,6 +400,7 @@ function rm_email_load_v2_confirmation_context(string $order_number): ?array
         'guest_label_plural'  => $guest_schema['label_plural'],
         'package_label'       => $package_label,
         'package_slug'        => $package_slug,
+        'locale'              => $locale,
         'amount_display'      => $currency . ' ' . number_format($amount, 2),
         'payment_method'      => $payment_method,
         'payment_status'      => (string) ($header['payment_status'] ?? ''),

@@ -6,6 +6,7 @@ $config_present = is_array($registration_config_present ?? null) ? $registration
 
 $mode_value = (string) ($registration_config['mode'] ?? 'individual');
 $coverage_value = (string) ($registration_config['coverage'] ?? RM_EVENT_COVERAGE_LOCAL);
+$locale_value = (string) ($registration_config['locale'] ?? RM_LOCALE_EN);
 $preset_value = (string) ($registration_config['form']['preset'] ?? 'full');
 $group_min = (int) ($registration_config['group']['min'] ?? 1);
 $group_max = (int) ($registration_config['group']['max'] ?? 1);
@@ -18,6 +19,24 @@ $custom_required_field_keys = rm_form_custom_required_field_keys();
 $core_field_definitions = rm_form_core_field_definitions();
 $admin_custom_fields = rm_form_present_admin_custom_fields($registration_config);
 $custom_field_types = rm_form_allowed_custom_field_types();
+$field_overrides = isset($registration_config['form']['field_overrides']) && is_array($registration_config['form']['field_overrides'])
+    ? $registration_config['form']['field_overrides']
+    : [];
+$admin_field_overrides = [];
+foreach ($selected_form_field_keys as $field_key) {
+    if (!isset($core_field_definitions[$field_key])) {
+        continue;
+    }
+    $override = isset($field_overrides[$field_key]) && is_array($field_overrides[$field_key])
+        ? $field_overrides[$field_key]
+        : [];
+    $admin_field_overrides[] = [
+        'key'         => $field_key,
+        'defaultLabel'=> (string) ($core_field_definitions[$field_key]['label'] ?? $field_key),
+        'label'       => (string) ($override['label'] ?? ''),
+        'placeholder' => (string) ($override['placeholder'] ?? ''),
+    ];
+}
 
 $guests_config = isset($registration_config['guests']) && is_array($registration_config['guests']) ? $registration_config['guests'] : [];
 $guests_enabled = !empty($guests_config['enabled']);
@@ -39,10 +58,39 @@ document.addEventListener('alpine:init', () => {
         mode: <?php echo wp_json_encode($mode_value); ?>,
         formPreset: <?php echo wp_json_encode($preset_value); ?>,
         customFields: <?php echo wp_json_encode($admin_custom_fields); ?>,
+        fieldOverrides: <?php echo wp_json_encode($admin_field_overrides); ?>,
         showCustomFields: false,
+        showFieldOverrides: false,
         guestsEnabled: <?php echo $guests_enabled ? 'true' : 'false'; ?>,
         guestFields: <?php echo wp_json_encode($admin_guest_fields); ?>,
         showGuestFields: false,
+        coreFieldDefs: <?php echo wp_json_encode(array_map(static function (array $def): array {
+            return [
+                'key'   => (string) ($def['key'] ?? ''),
+                'label' => (string) ($def['label'] ?? ''),
+            ];
+        }, array_values($core_field_definitions))); ?>,
+        presetKeys: <?php echo wp_json_encode([
+            'minimal'  => rm_form_preset_field_keys('minimal'),
+            'standard' => rm_form_preset_field_keys('standard'),
+            'full'     => rm_form_preset_field_keys('full'),
+            'custom'   => array_keys($core_field_definitions),
+        ]); ?>,
+        syncFieldOverrides() {
+            const keys = this.presetKeys[this.formPreset] || this.presetKeys.full || [];
+            const existing = {};
+            (this.fieldOverrides || []).forEach((row) => { existing[row.key] = row; });
+            this.fieldOverrides = keys.map((key) => {
+                const def = (this.coreFieldDefs || []).find((d) => d.key === key) || { key, label: key };
+                const prev = existing[key] || {};
+                return {
+                    key,
+                    defaultLabel: def.label || key,
+                    label: prev.label || '',
+                    placeholder: prev.placeholder || '',
+                };
+            });
+        },
         addGuestField() {
             this.guestFields.push({
                 key: '',
@@ -119,7 +167,17 @@ document.addEventListener('alpine:init', () => {
                                 <option value="local" <?php selected($coverage_value, RM_EVENT_COVERAGE_LOCAL); ?>>Local Event (Singapore Only)</option>
                                 <option value="international" <?php selected($coverage_value, RM_EVENT_COVERAGE_INTERNATIONAL); ?>>International</option>
                             </select>
-                            <!-- <p class="mt-1 text-[11px] text-slate-500">Controls the contact number country-code prepend on the public form.</p> -->
+                        </div>
+                        <div>
+                            <label class="block text-xs font-medium text-slate-600 mb-1" for="rm_locale">Event Language Translation</label>
+                            <select id="rm_locale" name="locale" class="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none">
+                                <?php foreach (rm_locale_labels() as $locale_code => $locale_label) : ?>
+                                    <option value="<?php echo esc_attr($locale_code); ?>" <?php selected($locale_value, $locale_code); ?>>
+                                        <?php echo esc_html($locale_label); ?>
+                                    </option>
+                                <?php endforeach; ?>
+                            </select>
+                            <!-- <p class="mt-1 text-[11px] text-slate-500">Default for the public form. Visitors can override with <code>?lang=zh_CN</code> or <code>?lang=en</code>.</p> -->
                         </div>
                         <div>
                             <label class="block text-xs font-medium text-slate-600 mb-1" for="rm_pricing_model">Pricing model</label>
@@ -366,6 +424,50 @@ document.addEventListener('alpine:init', () => {
                             </span>
                         </label>
                     <?php endforeach; ?>
+                </div>
+
+                <div class="mt-4 rounded-lg border border-slate-200 bg-white p-4" x-effect="syncFieldOverrides()">
+                    <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                        <div>
+                            <div class="flex flex-wrap items-center gap-2">
+                                <p class="text-sm font-medium text-slate-800">Field labels &amp; placeholders</p>
+                                <button
+                                    type="button"
+                                    class="inline-flex items-center justify-center rounded-full border border-slate-200 bg-slate-50 p-1 text-slate-500 hover:bg-slate-100 hover:text-slate-700 transition"
+                                    @click="showFieldOverrides = !showFieldOverrides"
+                                    :aria-expanded="showFieldOverrides"
+                                >
+                                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" class="size-3.5 transition-transform duration-300" :class="showFieldOverrides ? 'rotate-180' : ''">
+                                        <path stroke-linecap="round" stroke-linejoin="round" d="m19.5 8.25-7.5 7.5-7.5-7.5" />
+                                    </svg>
+                                </button>
+                            </div>
+                            <p class="mt-1 text-xs text-slate-500">Override core field labels/placeholders for this event. Leave blank to use the public form language defaults.</p>
+                        </div>
+                    </div>
+                    <div class="grid transition-[grid-template-rows] duration-300 ease-in-out" :class="showFieldOverrides ? 'grid-rows-[1fr]' : 'grid-rows-[0fr]'">
+                        <div class="overflow-hidden">
+                            <div class="mt-4 space-y-3">
+                                <template x-for="(row, index) in fieldOverrides" :key="row.key">
+                                    <div class="rounded-lg border border-slate-200 bg-slate-50 p-3 grid grid-cols-1 sm:grid-cols-3 gap-3">
+                                        <div>
+                                            <p class="text-xs font-medium text-slate-600 mb-1" x-text="row.defaultLabel"></p>
+                                            <input type="hidden" :name="'field_overrides[' + row.key + '][key]'" :value="row.key" />
+                                            <p class="text-[11px] text-slate-400" x-text="row.key"></p>
+                                        </div>
+                                        <div>
+                                            <label class="block text-xs font-medium text-slate-600 mb-1">Label</label>
+                                            <input type="text" class="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none" :name="'field_overrides[' + row.key + '][label]'" x-model="row.label" :placeholder="row.defaultLabel" />
+                                        </div>
+                                        <div>
+                                            <label class="block text-xs font-medium text-slate-600 mb-1">Placeholder</label>
+                                            <input type="text" class="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none" :name="'field_overrides[' + row.key + '][placeholder]'" x-model="row.placeholder" placeholder="Optional" />
+                                        </div>
+                                    </div>
+                                </template>
+                            </div>
+                        </div>
+                    </div>
                 </div>
 
                 <template x-if="formPreset === 'custom'">

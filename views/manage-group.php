@@ -21,6 +21,15 @@ $registration_config = is_array($registration_config ?? null) ? $registration_co
 $manage_token = (string) ($manage_token ?? '');
 $page_url = (string) ($page_url ?? '');
 $event_currency = (string) ($event_currency ?? 'SGD');
+$locale = (string) ($locale ?? 'en');
+$ui_strings = is_array($ui_strings ?? null) ? $ui_strings : (function_exists('rm_public_ui_strings') ? rm_public_ui_strings($locale) : []);
+$t = static function (string $key) use ($ui_strings, $locale): string {
+    if (isset($ui_strings[$key])) {
+        return $ui_strings[$key];
+    }
+
+    return function_exists('rm__') ? rm__($key, $locale) : $key;
+};
 ?>
 
 <section class="space-y-6">
@@ -33,10 +42,10 @@ $event_currency = (string) ($event_currency ?? 'SGD');
     <?php else : ?>
         <div class="bg-white border border-slate-200 rounded-xl shadow-sm p-6 space-y-4">
             <div>
-                <p class="text-[10px] font-semibold uppercase tracking-wider text-indigo-600">Group registration</p>
-                <h2 class="mt-1 text-2xl font-semibold text-slate-900">Add remaining members</h2>
+                <p class="text-[10px] font-semibold uppercase tracking-wider text-indigo-600"><?php echo esc_html($t('manage.heading')); ?></p>
+                <h2 class="mt-1 text-2xl font-semibold text-slate-900"><?php echo esc_html($t('email.add_remaining')); ?></h2>
                 <p class="mt-2 text-sm text-slate-600">
-                    If your flat group package still has open slots, you can add members here at no extra charge.
+                    <?php echo esc_html($t('manage.new_members_note')); ?>
                 </p>
             </div>
 

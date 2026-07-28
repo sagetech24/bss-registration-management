@@ -693,7 +693,7 @@ function rm_present_registration_event(array $event): array
     $end_time = isset($event['endTime']) ? trim((string) $event['endTime']) : '';
 
     if (!empty($event['customDate'])) {
-        $date_display = wp_strip_all_tags((string) $event['customDate']);
+        $date_display = trim(wp_kses_post((string) $event['customDate']));
     } else {
         $start_ts = !empty($event['startDate']) ? strtotime((string) $event['startDate']) : false;
         $end_ts = !empty($event['endDate']) ? strtotime((string) $event['endDate']) : false;
@@ -714,9 +714,9 @@ function rm_present_registration_event(array $event): array
         $time_display = $end_time;
     }
 
-    $venue = isset($event['venue']) ? trim(wp_strip_all_tags((string) $event['venue'])) : '';
+    $venue = isset($event['venue']) ? trim(wp_kses_post((string) $event['venue'])) : '';
     $thumb_url = isset($event['thumb']) ? trim((string) $event['thumb']) : '';
-    $description = isset($event['description']) ? trim((string) $event['description']) : '';
+    $description = isset($event['description']) ? trim(wp_kses_post((string) $event['description'])) : '';
 
     $price_num = rm_event_registration_price($event);
     $event_currency = rm_registration_currency($event);

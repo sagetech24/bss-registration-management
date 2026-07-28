@@ -76,7 +76,8 @@ function rm_v2_submit_registration(
     array $pricing,
     array $form_schema,
     ?array $promotion = null,
-    array $guest_rows = []
+    array $guest_rows = [],
+    string $locale = 'en'
 ): array {
     $event_id = isset($event['id']) ? absint($event['id']) : 0;
     $source = rm_event_source_value($event);
@@ -154,6 +155,9 @@ function rm_v2_submit_registration(
     }
 
     $schema_snapshot = [
+        'locale'     => function_exists('rm_normalize_locale')
+            ? (rm_normalize_locale($locale) !== '' ? rm_normalize_locale($locale) : 'en')
+            : 'en',
         'registrant' => $form_schema['fields'] ?? [],
     ];
     if ($guest_rows !== []) {

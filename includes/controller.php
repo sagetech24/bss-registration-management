@@ -87,7 +87,10 @@ function rm_build_register_context(): array
     $context['event'] = $event;
     $context['event_present'] = rm_present_registration_event($event);
     $context['uses_v2'] = rm_event_uses_v2_registration($event);
-    $context['individual_href'] = rm_registration_url(['event_code' => $event_code]);
+    $context['individual_href'] = rm_registration_url(array_filter([
+        'event_code' => $event_code,
+        'lang'       => rm_get_request_lang() !== '' ? rm_get_request_lang() : null,
+    ]));
 
     $promotion = null;
     if ($context['uses_v2']) {
@@ -125,7 +128,10 @@ function rm_build_register_context(): array
         : null;
     $context['registration_config'] = rm_effective_registration_config($event, $promotion);
     $context['event_currency'] = rm_registration_currency($event);
-    $context['form_schema'] = rm_parse_form_schema($event);
+    $context['locale'] = rm_resolve_locale($event, rm_get_request_lang() !== '' ? rm_get_request_lang() : null);
+    $context['html_lang'] = rm_locale_html_lang($context['locale']);
+    $context['ui_strings'] = rm_public_ui_strings($context['locale']);
+    $context['form_schema'] = rm_parse_form_schema($event, $context['locale']);
     $context['guest_schema'] = rm_parse_guest_form_schema($event);
     $context['is_group_mode'] = rm_effective_is_group_mode($event, $promotion);
     $context['group_limits'] = rm_effective_group_limits($event, $promotion);
@@ -244,6 +250,9 @@ function rm_build_register_context(): array
     ];
     if ($package_slug !== '') {
         $redirect_args['package'] = $package_slug;
+    }
+    if (!empty($context['locale'])) {
+        $redirect_args['lang'] = $context['locale'];
     }
     wp_safe_redirect(rm_registration_url($redirect_args));
     exit;
