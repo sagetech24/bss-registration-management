@@ -60,7 +60,7 @@ return [
     'register.order_number' => 'Your order number',
     'register.privacy' => 'By submitting this form, you agree to our privacy policy and consent to the collection and use of your personal data for this event.',
     'register.individual_instead' => 'Register individually instead',
-    'register.validity' => 'Validity Date',
+    'register.validity' => 'Promotion Validity Date',
     'register.valid_from' => 'From',
     'register.valid_until' => 'To',
     'receipt.confirmed' => 'Your registration has been confirmed!',

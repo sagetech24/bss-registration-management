@@ -57,7 +57,7 @@ return [
     'register.order_number' => '您的订单编号',
     'register.privacy' => '提交此表格即表示您同意我们的隐私政策，并同意我们为本活动收集和使用您的个人资料。',
     'register.individual_instead' => '改为个人报名',
-    'register.validity' => '有效期',
+    'register.validity' => '有效日期',
     'register.valid_from' => '开始',
     'register.valid_until' => '结束',
     'receipt.confirmed' => '您的报名已确认！',
