@@ -379,6 +379,12 @@ function rm_present_event_promotion(array $promotion, ?array $event = null): arr
         'deleted_at'          => $promotion['deleted_at'] ?? null,
         'valid_from'          => $promotion['valid_from'] ?? null,
         'valid_until'         => $promotion['valid_until'] ?? null,
+        'valid_from_display'  => !empty($promotion['valid_from'])
+            ? rm_format_payment_transaction_datetime((string) $promotion['valid_from'])
+            : '',
+        'valid_until_display' => !empty($promotion['valid_until'])
+            ? rm_format_payment_transaction_datetime((string) $promotion['valid_until'])
+            : '',
         'sort_order'          => (int) ($promotion['sort_order'] ?? 0),
     ];
 }
@@ -933,7 +939,7 @@ function rm_resolve_registration_promotion(array $event): array
         return [
             'ok'             => false,
             'error'          => $valid['error'],
-            'promotion'      => null,
+            'promotion'      => $promotion,
             'slug_requested' => true,
         ];
     }

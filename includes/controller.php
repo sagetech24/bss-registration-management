@@ -103,6 +103,10 @@ function rm_build_register_context(): array
 
             $context['error_message'] = $resolved['error'];
             $context['event_present'] = null;
+            if (is_array($resolved['promotion']) && $resolved['promotion'] !== []) {
+                $resolved['promotion']['_currency'] = rm_registration_currency($event);
+                $context['promotion_present'] = rm_present_event_promotion($resolved['promotion'], $event);
+            }
 
             return $context;
         }

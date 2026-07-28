@@ -42,7 +42,19 @@ $t = static function (string $key, array $replace = []) use ($ui_strings, $local
             <div class="p-4 bg-rose-50 border border-rose-200 rounded-lg text-rose-800">
                 <?php echo esc_html($error_message); ?>
             </div>
-            <?php if ($individual_href !== '') : ?>
+            <?php if ($promotion_present !== null && (($promotion_present['valid_from_display'] ?? '') !== '' || ($promotion_present['valid_until_display'] ?? '') !== '')) : ?>
+                <div class="mt-4 text-sm text-slate-600">
+                    <p class="font-medium text-slate-700"><?php echo esc_html($t('register.validity')); ?></p>
+                    <p class="mt-1">
+                        <span class="text-slate-500"><?php echo esc_html($t('register.valid_from')); ?>:</span>
+                        <?php echo esc_html((string) ($promotion_present['valid_from_display'] ?? '—')); ?>
+                    </p>
+                    <p>
+                        <span class="text-slate-500"><?php echo esc_html($t('register.valid_until')); ?>:</span>
+                        <?php echo esc_html((string) ($promotion_present['valid_until_display'] ?? '—')); ?>
+                    </p>
+                </div>
+            <?php elseif ($individual_href !== '') : ?>
                 <p class="mt-4 text-sm text-slate-600">
                     <a href="<?php echo esc_url($individual_href); ?>" class="font-medium text-indigo-700 hover:text-indigo-900">
                         <?php echo esc_html($t('register.individual_instead')); ?>
@@ -92,12 +104,18 @@ $t = static function (string $key, array $replace = []) use ($ui_strings, $local
                                 <?php echo esc_html($promotion_present['price_display']); ?>
                             </span>
                         </p>
-                        <?php if ($mode !== 'individual') : ?>
-                            <p class="mt-3 text-sm">
-                                <a href="<?php echo esc_url($individual_href); ?>" class="font-medium text-indigo-700 hover:text-indigo-900">
-                                    <?php echo esc_html($t('register.individual_instead')); ?>
-                                </a>
-                            </p>
+                        <?php if (($promotion_present['valid_from_display'] ?? '') !== '' || ($promotion_present['valid_until_display'] ?? '') !== '') : ?>
+                            <div class="mt-3 text-sm text-slate-600">
+                                <p class="font-medium text-slate-700"><?php echo esc_html($t('register.validity')); ?></p>
+                                <p class="mt-1">
+                                    <span class="text-slate-500"><?php echo esc_html($t('register.valid_from')); ?>:</span>
+                                    <?php echo esc_html((string) ($promotion_present['valid_from_display'] ?? '—')); ?>
+                                </p>
+                                <p>
+                                    <span class="text-slate-500"><?php echo esc_html($t('register.valid_until')); ?>:</span>
+                                    <?php echo esc_html((string) ($promotion_present['valid_until_display'] ?? '—')); ?>
+                                </p>
+                            </div>
                         <?php endif; ?>
                     </div>
                 <?php endif; ?>
