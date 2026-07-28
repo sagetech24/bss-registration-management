@@ -119,23 +119,66 @@ function rm_format_currency(float $amount, string $currency = 'SGD', bool $show_
 }
 
 /**
+ * Decode event settings JSON, repairing historic invalid \' escapes when needed.
+ *
+ * @return array{ok: bool, settings: array<string, mixed>, corrupt: bool}
+ */
+function rm_decode_settings_json(mixed $raw): array
+{
+    if (is_array($raw)) {
+        return [
+            'ok'       => true,
+            'settings' => $raw,
+            'corrupt'  => false,
+        ];
+    }
+
+    if (!is_string($raw) || trim($raw) === '') {
+        return [
+            'ok'       => true,
+            'settings' => [],
+            'corrupt'  => false,
+        ];
+    }
+
+    $decoded = json_decode($raw, true);
+    if (is_array($decoded)) {
+        return [
+            'ok'       => true,
+            'settings' => $decoded,
+            'corrupt'  => false,
+        ];
+    }
+
+    // Historic bug: magic-quoted labels + update_post_meta wp_unslash left invalid \' in JSON.
+    $repaired = str_replace("\\'", "'", $raw);
+    if ($repaired !== $raw) {
+        $decoded = json_decode($repaired, true);
+        if (is_array($decoded)) {
+            return [
+                'ok'       => true,
+                'settings' => $decoded,
+                'corrupt'  => true,
+            ];
+        }
+    }
+
+    return [
+        'ok'       => false,
+        'settings' => [],
+        'corrupt'  => true,
+    ];
+}
+
+/**
  * @param array<string, mixed> $event
  * @return array<string, mixed>
  */
 function rm_decode_event_settings(array $event): array
 {
-    $raw = $event['settings'] ?? null;
-    if (is_array($raw)) {
-        return $raw;
-    }
+    $result = rm_decode_settings_json($event['settings'] ?? null);
 
-    if (!is_string($raw) || trim($raw) === '') {
-        return [];
-    }
-
-    $decoded = json_decode($raw, true);
-
-    return is_array($decoded) ? $decoded : [];
+    return $result['settings'];
 }
 
 /**
@@ -673,10 +716,10 @@ function rm_normalize_registration_settings_input(array $input, array $existing_
     }
 
     $guest_label_singular = isset($input['guest_label_singular'])
-        ? sanitize_text_field((string) $input['guest_label_singular'])
+        ? sanitize_text_field(wp_unslash((string) $input['guest_label_singular']))
         : (string) ($existing_guests['label_singular'] ?? 'Guest');
     $guest_label_plural = isset($input['guest_label_plural'])
-        ? sanitize_text_field((string) $input['guest_label_plural'])
+        ? sanitize_text_field(wp_unslash((string) $input['guest_label_plural']))
         : (string) ($existing_guests['label_plural'] ?? 'Guests');
     if ($guest_label_singular === '') {
         $guest_label_singular = 'Guest';
@@ -805,17 +848,16 @@ function rm_save_event_registration_settings(int $event_id, array $registration,
             ];
         }
 
-        $settings = [];
         $raw = get_post_meta($event_id, 'settings', true);
-        if (is_string($raw) && trim($raw) !== '') {
-            $decoded = json_decode($raw, true);
-            if (is_array($decoded)) {
-                $settings = $decoded;
-            }
-        } elseif (is_array($raw)) {
-            $settings = $raw;
+        $decoded = rm_decode_settings_json($raw);
+        if (!$decoded['ok'] && is_string($raw) && trim($raw) !== '') {
+            return [
+                'ok'    => false,
+                'error' => 'Existing event settings JSON is corrupt and cannot be updated safely. Restore settings from backup first.',
+            ];
         }
 
+        $settings = $decoded['settings'];
         $settings['registration'] = $registration;
         $encoded = wp_json_encode($settings);
         if (!is_string($encoded) || $encoded === '') {
@@ -825,7 +867,8 @@ function rm_save_event_registration_settings(int $event_id, array $registration,
             ];
         }
 
-        update_post_meta($event_id, 'settings', $encoded);
+        // update_post_meta() runs wp_unslash(); slash so JSON backslashes survive.
+        update_post_meta($event_id, 'settings', wp_slash($encoded));
 
         return [
             'ok'    => true,
@@ -847,17 +890,16 @@ function rm_save_event_registration_settings(int $event_id, array $registration,
         ];
     }
 
-    $settings = [];
     $raw = $row['settings'] ?? '';
-    if (is_string($raw) && trim($raw) !== '') {
-        $decoded = json_decode($raw, true);
-        if (is_array($decoded)) {
-            $settings = $decoded;
-        }
-    } elseif (is_array($raw)) {
-        $settings = $raw;
+    $decoded = rm_decode_settings_json($raw);
+    if (!$decoded['ok'] && is_string($raw) && trim($raw) !== '') {
+        return [
+            'ok'    => false,
+            'error' => 'Existing event settings JSON is corrupt and cannot be updated safely. Restore settings from backup first.',
+        ];
     }
 
+    $settings = $decoded['settings'];
     $settings['registration'] = $registration;
     $encoded = wp_json_encode($settings);
     if (!is_string($encoded) || $encoded === '') {

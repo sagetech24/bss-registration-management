@@ -494,6 +494,17 @@ function rm_ensure_cpt_v2_settings(int $post_id): string
     }
 
     if (is_string($raw) && trim($raw) !== '') {
+        $decoded = rm_decode_settings_json($raw);
+        // Persist repaired JSON when historic slash corruption is detected.
+        if ($decoded['ok'] && !empty($decoded['corrupt'])) {
+            $encoded = wp_json_encode($decoded['settings']);
+            if (is_string($encoded) && $encoded !== '') {
+                update_post_meta($post_id, 'settings', wp_slash($encoded));
+
+                return $encoded;
+            }
+        }
+
         return $raw;
     }
 
@@ -504,7 +515,8 @@ function rm_ensure_cpt_v2_settings(int $post_id): string
         return '';
     }
 
-    update_post_meta($post_id, 'settings', $encoded);
+    // update_post_meta() runs wp_unslash(); slash so JSON backslashes survive.
+    update_post_meta($post_id, 'settings', wp_slash($encoded));
 
     return $encoded;
 }

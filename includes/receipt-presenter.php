@@ -44,6 +44,10 @@ function rm_event_landing_url(array $event): string
  */
 function rm_event_decode_settings(array $event): array
 {
+    if (function_exists('rm_decode_event_settings')) {
+        return rm_decode_event_settings($event);
+    }
+
     $raw = $event['settings'] ?? null;
     if (is_array($raw)) {
         return $raw;

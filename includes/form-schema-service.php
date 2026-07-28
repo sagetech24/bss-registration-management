@@ -269,12 +269,12 @@ function rm_form_normalize_admin_custom_fields_input(mixed $rows): array
             continue;
         }
 
-        $label = sanitize_text_field((string) ($row['label'] ?? ''));
+        $label = sanitize_text_field(wp_unslash((string) ($row['label'] ?? '')));
         if ($label === '') {
             continue;
         }
 
-        $key = sanitize_key((string) ($row['key'] ?? ''));
+        $key = sanitize_key(wp_unslash((string) ($row['key'] ?? '')));
         if ($key === '') {
             $key = sanitize_key($label);
         }
@@ -295,7 +295,7 @@ function rm_form_normalize_admin_custom_fields_input(mixed $rows): array
         $key = $candidate;
         $used_keys[$key] = true;
 
-        $type = sanitize_key((string) ($row['type'] ?? 'text'));
+        $type = sanitize_key(wp_unslash((string) ($row['type'] ?? 'text')));
         if (!in_array($type, rm_form_allowed_custom_field_types(), true)) {
             $type = 'text';
         }
@@ -309,7 +309,7 @@ function rm_form_normalize_admin_custom_fields_input(mixed $rows): array
             'order'    => $order,
         ];
 
-        $placeholder = sanitize_text_field((string) ($row['placeholder'] ?? ''));
+        $placeholder = sanitize_text_field(wp_unslash((string) ($row['placeholder'] ?? '')));
         $field['placeholder'] = $placeholder !== '' ? $placeholder : $label;
 
         if (in_array($type, ['select', 'radio', 'checkbox_group'], true)) {
@@ -317,7 +317,7 @@ function rm_form_normalize_admin_custom_fields_input(mixed $rows): array
             if (isset($row['options']) && is_array($row['options'])) {
                 $options = rm_form_normalize_options($row['options']);
             } else {
-                $options_text = (string) ($row['options'] ?? $row['optionsText'] ?? '');
+                $options_text = wp_unslash((string) ($row['options'] ?? $row['optionsText'] ?? ''));
                 $options = rm_form_normalize_options(rm_form_parse_options_text($options_text));
             }
 
