@@ -998,3 +998,116 @@ function rm_save_event_registration_settings(int $event_id, array $registration,
         'error' => '',
     ];
 }
+
+/**
+ * Merge top-level keys into event settings JSON (bss_events or CPT post meta).
+ *
+ * @param array<string, mixed> $patch
+ * @return array{ok: bool, error: string}
+ */
+function rm_patch_event_settings(int $event_id, array $patch, string $source = ''): array
+{
+    if ($event_id < 1) {
+        return [
+            'ok'    => false,
+            'error' => 'Invalid event id.',
+        ];
+    }
+
+    if ($patch === []) {
+        return [
+            'ok'    => true,
+            'error' => '',
+        ];
+    }
+
+    $source = rm_normalize_event_source($source);
+
+    if ($source === 'cpt') {
+        $post = get_post($event_id);
+        if (!$post instanceof WP_Post || $post->post_type !== 'event') {
+            return [
+                'ok'    => false,
+                'error' => 'Event could not be found.',
+            ];
+        }
+
+        $raw = get_post_meta($event_id, 'settings', true);
+        $decoded = rm_decode_settings_json($raw);
+        if (!$decoded['ok'] && is_string($raw) && trim($raw) !== '') {
+            return [
+                'ok'    => false,
+                'error' => 'Existing event settings JSON is corrupt and cannot be updated safely. Restore settings from backup first.',
+            ];
+        }
+
+        $settings = array_merge($decoded['settings'], $patch);
+        $encoded = wp_json_encode($settings);
+        if (!is_string($encoded) || $encoded === '') {
+            return [
+                'ok'    => false,
+                'error' => 'Failed to encode event settings.',
+            ];
+        }
+
+        // update_post_meta() runs wp_unslash(); slash so JSON backslashes survive.
+        update_post_meta($event_id, 'settings', wp_slash($encoded));
+
+        return [
+            'ok'    => true,
+            'error' => '',
+        ];
+    }
+
+    global $wpdb;
+
+    $row = $wpdb->get_row(
+        $wpdb->prepare('SELECT `settings` FROM `bss_events` WHERE `id` = %d LIMIT 1', $event_id),
+        ARRAY_A
+    );
+
+    if (!is_array($row)) {
+        return [
+            'ok'    => false,
+            'error' => 'Event could not be found.',
+        ];
+    }
+
+    $raw = $row['settings'] ?? '';
+    $decoded = rm_decode_settings_json($raw);
+    if (!$decoded['ok'] && is_string($raw) && trim($raw) !== '') {
+        return [
+            'ok'    => false,
+            'error' => 'Existing event settings JSON is corrupt and cannot be updated safely. Restore settings from backup first.',
+        ];
+    }
+
+    $settings = array_merge($decoded['settings'], $patch);
+    $encoded = wp_json_encode($settings);
+    if (!is_string($encoded) || $encoded === '') {
+        return [
+            'ok'    => false,
+            'error' => 'Failed to encode event settings.',
+        ];
+    }
+
+    $updated = $wpdb->update(
+        'bss_events',
+        ['settings' => $encoded],
+        ['id' => $event_id],
+        ['%s'],
+        ['%d']
+    );
+
+    if ($updated === false) {
+        return [
+            'ok'    => false,
+            'error' => $wpdb->last_error !== '' ? $wpdb->last_error : 'Failed to save event settings.',
+        ];
+    }
+
+    return [
+        'ok'    => true,
+        'error' => '',
+    ];
+}

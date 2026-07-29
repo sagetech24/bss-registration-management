@@ -408,12 +408,13 @@ function rm_get_registrant_id(): int
 function rm_event_profile_tabs(): array
 {
     return [
-        'packages'     => 'Promotion Packages',
-        'promo-codes'  => 'Promo Codes',
-        'registrants'  => 'Registrants',
-        'addons'       => 'Guests',
-        'custom-form'  => 'Custom Form Options',
-        'settings'     => 'Event Settings',
+        'packages'       => 'Promotion Packages',
+        'promo-codes'    => 'Promo Codes',
+        'registrants'    => 'Registrants',
+        'addons'         => 'Guests',
+        'custom-form'    => 'Custom Form Options',
+        'settings'       => 'Event Settings',
+        'email-settings' => 'Email Settings',
     ];
 }
 
