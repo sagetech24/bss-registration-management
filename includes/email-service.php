@@ -113,7 +113,12 @@ function rm_email_build_headers(array $context): array
 {
     $headers = ['Content-Type: text/html; charset=UTF-8'];
 
-    $cc_emails = ['family.min@biblesociety.sg'];
+    $reply_to = 'family.min@biblesociety.sg';
+    if (is_email($reply_to)) {
+        $headers[] = 'Reply-To: ' . $reply_to;
+    }
+
+    $cc_emails = [$reply_to];
 
     $event_email = trim((string) ($context['event']['email'] ?? ''));
     if ($event_email !== '') {
