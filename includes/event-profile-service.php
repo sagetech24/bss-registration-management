@@ -153,6 +153,9 @@ function rm_handle_event_profile_post(): void
     if ($rm_action === 'save_registration_settings') {
         $result = rm_handle_save_registration_settings_post($event_id, $event_source);
         $redirect_tab = 'settings';
+    } elseif ($rm_action === 'save_email_settings') {
+        $result = rm_handle_save_email_settings_post($event_id, $event_source);
+        $redirect_tab = 'email-settings';
     } elseif ($rm_action === 'save_promotion') {
         $result = rm_handle_save_promotion_post($event_id, $event_source);
         $redirect_tab = 'packages';
@@ -267,6 +270,45 @@ function rm_handle_save_registration_settings_post(int $event_id, string $source
         'ok'      => true,
         'error'   => '',
         'message' => 'Registration settings saved.',
+    ];
+}
+
+/**
+ * @return array{ok: bool, error: string, message?: string}
+ */
+function rm_handle_save_email_settings_post(int $event_id, string $source = ''): array
+{
+    $event = rm_get_event_by_id($event_id, $source);
+    if ($event === null) {
+        return [
+            'ok'    => false,
+            'error' => 'Event could not be found.',
+        ];
+    }
+
+    $input = wp_unslash([
+        'reply_to' => $_POST['reply_to'] ?? '',
+        'cc'       => $_POST['cc'] ?? '',
+        'bcc'      => $_POST['bcc'] ?? '',
+    ]);
+
+    $normalized = rm_normalize_email_settings_input($input);
+    if (!$normalized['ok']) {
+        return [
+            'ok'    => false,
+            'error' => $normalized['error'],
+        ];
+    }
+
+    $saved = rm_save_event_email_settings($event_id, $normalized['email_settings'], $source);
+    if (!$saved['ok']) {
+        return $saved;
+    }
+
+    return [
+        'ok'      => true,
+        'error'   => '',
+        'message' => 'Email settings saved.',
     ];
 }
 
@@ -590,6 +632,14 @@ function rm_build_event_profile_context(array $events_by_year, string $requested
         : (float) ($selected_event['price'] ?? 0);
     $price_display = rm_format_currency($price_num, $event_currency);
 
+    $email_preview_html = '';
+    $email_preview_subject = '';
+    if ($profile_tab === 'email-settings') {
+        $email_preview_context = rm_email_build_preview_context($selected_event);
+        $email_preview_html = rm_email_render('payment-confirmation', $email_preview_context);
+        $email_preview_subject = rm_email_preview_subject_from_context($email_preview_context);
+    }
+
     return [
         'selected_event'              => $selected_event,
         'selected_event_code'         => $selected_event_code,
@@ -627,5 +677,8 @@ function rm_build_event_profile_context(array $events_by_year, string $requested
         'registration_modes'          => rm_registration_modes(),
         'form_presets'                => rm_form_presets(),
         'registration_currencies'     => rm_registration_currencies(),
+        'email_settings'              => rm_email_get_event_settings($selected_event),
+        'email_preview_html'          => $email_preview_html,
+        'email_preview_subject'       => $email_preview_subject,
     ];
 }

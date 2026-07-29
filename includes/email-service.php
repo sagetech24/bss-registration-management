@@ -113,30 +113,309 @@ function rm_email_build_headers(array $context): array
 {
     $headers = ['Content-Type: text/html; charset=UTF-8'];
 
-    $reply_to = 'family.min@biblesociety.sg';
-    if (is_email($reply_to)) {
+    $config = rm_email_resolve_header_config($context);
+
+    $reply_to = trim((string) ($config['reply_to'] ?? ''));
+    if ($reply_to !== '' && is_email($reply_to)) {
         $headers[] = 'Reply-To: ' . $reply_to;
     }
 
-    $cc_emails = [$reply_to];
-
-    $event_email = trim((string) ($context['event']['email'] ?? ''));
-    if ($event_email !== '') {
-        foreach (explode(',', $event_email) as $cc) {
-            $cc = trim($cc);
-            if ($cc !== '') {
-                $cc_emails[] = $cc;
-            }
-        }
-    }
-
-    foreach (array_unique($cc_emails) as $cc) {
+    foreach ($config['cc'] as $cc) {
         if (is_email($cc)) {
             $headers[] = 'Cc: ' . $cc;
         }
     }
 
+    foreach ($config['bcc'] as $bcc) {
+        if (is_email($bcc)) {
+            $headers[] = 'Bcc: ' . $bcc;
+        }
+    }
+
     return $headers;
+}
+
+function rm_email_default_reply_to(): string
+{
+    return (string) apply_filters('rm_email_default_reply_to', 'registration@biblesociety.sg');
+}
+
+/**
+ * @return array{reply_to: string, cc: list<string>, bcc: list<string>}
+ */
+function rm_email_settings_defaults(): array
+{
+    return [
+        'reply_to' => rm_email_default_reply_to(),
+        'cc'       => [],
+        'bcc'      => [],
+    ];
+}
+
+/**
+ * Split a free-text address list (commas, semicolons, or newlines) into emails.
+ *
+ * @return list<string>
+ */
+function rm_email_parse_address_list(string $raw): array
+{
+    $raw = trim($raw);
+    if ($raw === '') {
+        return [];
+    }
+
+    $parts = preg_split('/[\s,;]+/', $raw) ?: [];
+    $emails = [];
+    foreach ($parts as $part) {
+        $email = strtolower(trim((string) $part));
+        if ($email === '' || !is_email($email)) {
+            continue;
+        }
+        $emails[] = $email;
+    }
+
+    return array_values(array_unique($emails));
+}
+
+/**
+ * @param list<string>|string|mixed $value
+ * @return list<string>
+ */
+function rm_email_normalize_address_list($value): array
+{
+    if (is_array($value)) {
+        $emails = [];
+        foreach ($value as $item) {
+            $email = strtolower(trim((string) $item));
+            if ($email !== '' && is_email($email)) {
+                $emails[] = $email;
+            }
+        }
+
+        return array_values(array_unique($emails));
+    }
+
+    return rm_email_parse_address_list((string) $value);
+}
+
+/**
+ * @param array<string, mixed> $input
+ * @return array{ok: bool, error: string, email_settings: array{reply_to: string, cc: list<string>, bcc: list<string>}}
+ */
+function rm_normalize_email_settings_input(array $input): array
+{
+    $reply_to_raw = trim((string) ($input['reply_to'] ?? ''));
+    $reply_to = '';
+    if ($reply_to_raw !== '') {
+        $reply_to = strtolower(sanitize_email($reply_to_raw));
+        if ($reply_to === '' || !is_email($reply_to)) {
+            return [
+                'ok'             => false,
+                'error'          => 'Reply-To must be a valid email address.',
+                'email_settings' => rm_email_settings_defaults(),
+            ];
+        }
+    }
+
+    $cc_raw = (string) ($input['cc'] ?? '');
+    $bcc_raw = (string) ($input['bcc'] ?? '');
+
+    $invalid_cc = rm_email_invalid_addresses_from_raw($cc_raw);
+    if ($invalid_cc !== []) {
+        return [
+            'ok'             => false,
+            'error'          => 'CC contains invalid email(s): ' . implode(', ', $invalid_cc),
+            'email_settings' => rm_email_settings_defaults(),
+        ];
+    }
+
+    $invalid_bcc = rm_email_invalid_addresses_from_raw($bcc_raw);
+    if ($invalid_bcc !== []) {
+        return [
+            'ok'             => false,
+            'error'          => 'BCC contains invalid email(s): ' . implode(', ', $invalid_bcc),
+            'email_settings' => rm_email_settings_defaults(),
+        ];
+    }
+
+    return [
+        'ok'             => true,
+        'error'          => '',
+        'email_settings' => [
+            'reply_to' => $reply_to,
+            'cc'       => rm_email_parse_address_list($cc_raw),
+            'bcc'      => rm_email_parse_address_list($bcc_raw),
+        ],
+    ];
+}
+
+/**
+ * Tokens that look like addresses but fail is_email().
+ *
+ * @return list<string>
+ */
+function rm_email_invalid_addresses_from_raw(string $raw): array
+{
+    $raw = trim($raw);
+    if ($raw === '') {
+        return [];
+    }
+
+    $parts = preg_split('/[\s,;]+/', $raw) ?: [];
+    $invalid = [];
+    foreach ($parts as $part) {
+        $token = trim((string) $part);
+        if ($token === '') {
+            continue;
+        }
+        if (!is_email(strtolower($token))) {
+            $invalid[] = $token;
+        }
+    }
+
+    return array_values(array_unique($invalid));
+}
+
+/**
+ * Load email settings for the admin form (seeds from legacy event.email when unset).
+ *
+ * @param array<string, mixed> $event
+ * @return array{
+ *     reply_to: string,
+ *     cc: list<string>,
+ *     bcc: list<string>,
+ *     cc_text: string,
+ *     bcc_text: string,
+ *     configured: bool
+ * }
+ */
+function rm_email_get_event_settings(array $event): array
+{
+    $defaults = rm_email_settings_defaults();
+    $settings = function_exists('rm_decode_event_settings')
+        ? rm_decode_event_settings($event)
+        : [];
+
+    $configured = isset($settings['email_settings']) && is_array($settings['email_settings']);
+    $stored = $configured ? $settings['email_settings'] : [];
+
+    $reply_to = trim((string) ($stored['reply_to'] ?? ''));
+    if ($reply_to === '' && !$configured) {
+        $reply_to = $defaults['reply_to'];
+    } elseif ($reply_to !== '' && !is_email($reply_to)) {
+        $reply_to = $defaults['reply_to'];
+    }
+
+    if ($configured) {
+        $cc = rm_email_normalize_address_list($stored['cc'] ?? []);
+        $bcc = rm_email_normalize_address_list($stored['bcc'] ?? []);
+    } else {
+        // Legacy parity: staff CC came from the event email column / settings.email.
+        $legacy_email = trim((string) ($event['email'] ?? ''));
+        if ($legacy_email === '') {
+            $legacy_email = trim((string) ($settings['email'] ?? $settings['contactEmail'] ?? ''));
+        }
+        $cc = rm_email_parse_address_list($legacy_email);
+        $default_reply = $defaults['reply_to'];
+        if ($default_reply !== '' && is_email($default_reply) && !in_array(strtolower($default_reply), $cc, true)) {
+            array_unshift($cc, strtolower($default_reply));
+        }
+        $bcc = [];
+    }
+
+    return [
+        'reply_to'   => $reply_to,
+        'cc'         => $cc,
+        'bcc'        => $bcc,
+        'cc_text'    => implode("\n", $cc),
+        'bcc_text'   => implode("\n", $bcc),
+        'configured' => $configured,
+    ];
+}
+
+/**
+ * @param array{reply_to: string, cc: list<string>, bcc: list<string>} $email_settings
+ * @return array{ok: bool, error: string}
+ */
+function rm_save_event_email_settings(int $event_id, array $email_settings, string $source = ''): array
+{
+    if (!function_exists('rm_patch_event_settings')) {
+        return [
+            'ok'    => false,
+            'error' => 'Settings storage is unavailable.',
+        ];
+    }
+
+    return rm_patch_event_settings($event_id, [
+        'email_settings' => [
+            'reply_to' => (string) ($email_settings['reply_to'] ?? ''),
+            'cc'       => array_values($email_settings['cc'] ?? []),
+            'bcc'      => array_values($email_settings['bcc'] ?? []),
+        ],
+    ], $source);
+}
+
+/**
+ * Resolve Reply-To / Cc / Bcc for outbound mail from confirmation context.
+ *
+ * @param array<string, mixed> $context
+ * @return array{reply_to: string, cc: list<string>, bcc: list<string>}
+ */
+function rm_email_resolve_header_config(array $context): array
+{
+    $defaults = rm_email_settings_defaults();
+    $event = isset($context['event']) && is_array($context['event']) ? $context['event'] : [];
+
+    $stored = null;
+    if (isset($event['email_settings']) && is_array($event['email_settings'])) {
+        $stored = $event['email_settings'];
+    } elseif ($event !== [] && function_exists('rm_decode_event_settings')) {
+        // Prefer a full event row when available (load_event_row is slim).
+        $event_id = isset($event['id']) ? absint($event['id']) : 0;
+        if ($event_id > 0 && function_exists('rm_get_event_by_id')) {
+            $source = function_exists('rm_infer_event_source')
+                ? rm_infer_event_source($event_id)
+                : '';
+            $full = rm_get_event_by_id($event_id, $source);
+            if (is_array($full) && $full !== []) {
+                $settings = rm_decode_event_settings($full);
+                if (isset($settings['email_settings']) && is_array($settings['email_settings'])) {
+                    $stored = $settings['email_settings'];
+                }
+            }
+        }
+    }
+
+    if (is_array($stored)) {
+        $reply_to = trim((string) ($stored['reply_to'] ?? ''));
+        if ($reply_to === '' || !is_email($reply_to)) {
+            $reply_to = $defaults['reply_to'];
+        }
+
+        return [
+            'reply_to' => $reply_to,
+            'cc'       => rm_email_normalize_address_list($stored['cc'] ?? []),
+            'bcc'      => rm_email_normalize_address_list($stored['bcc'] ?? []),
+        ];
+    }
+
+    // Legacy behaviour before Email Settings were saved.
+    $reply_to = $defaults['reply_to'];
+    $cc = [];
+    if ($reply_to !== '' && is_email($reply_to)) {
+        $cc[] = strtolower($reply_to);
+    }
+
+    $event_email = trim((string) ($event['email'] ?? ''));
+    foreach (rm_email_parse_address_list($event_email) as $cc_email) {
+        $cc[] = $cc_email;
+    }
+
+    return [
+        'reply_to' => $reply_to,
+        'cc'       => array_values(array_unique($cc)),
+        'bcc'      => [],
+    ];
 }
 
 function rm_email_log_dry_run(string $to, string $subject, string $body, string $order_number): void
@@ -855,4 +1134,184 @@ function rm_email_render(string $template, array $vars): string
     $html = ob_get_clean();
 
     return is_string($html) ? $html : '';
+}
+
+/**
+ * Build sample confirmation-email context for the admin HTML preview.
+ *
+ * @param array<string, mixed> $event
+ * @return array<string, mixed>
+ */
+function rm_email_build_preview_context(array $event): array
+{
+    $event_id = isset($event['id']) ? absint($event['id']) : 0;
+    $event_row = $event_id > 0 ? rm_email_load_event_row($event_id) : [
+        'id'           => 0,
+        'title'        => trim((string) ($event['title'] ?? 'Event')),
+        'email'        => '',
+        'venue'        => trim(preg_replace('/\s+/u', ' ', wp_strip_all_tags((string) ($event['venue'] ?? ''))) ?? ''),
+        'date_display' => function_exists('rm_format_event_date_display')
+            ? rm_format_event_date_display($event)
+            : '',
+        'thumb'        => rm_email_normalize_asset_url(trim((string) ($event['thumb'] ?? ''))),
+        'logo_url'     => rm_email_normalize_asset_url(trim((string) ($event['thumb'] ?? ''))),
+    ];
+
+    if (trim((string) ($event_row['title'] ?? '')) === '' || (string) $event_row['title'] === 'Event') {
+        $title = trim((string) ($event['title'] ?? ''));
+        if ($title !== '') {
+            $event_row['title'] = $title;
+        }
+    }
+
+    $locale = function_exists('rm_resolve_locale') ? rm_resolve_locale($event) : 'en';
+    $currency = function_exists('rm_registration_currency') ? rm_registration_currency($event) : 'SGD';
+    $amount = function_exists('rm_event_registration_price')
+        ? (float) rm_event_registration_price($event)
+        : (float) ($event['price'] ?? 0);
+    $is_free = function_exists('rm_event_is_free') ? rm_event_is_free($event) : ($amount <= 0);
+
+    $registration_config = function_exists('rm_parse_registration_config')
+        ? rm_parse_registration_config($event)
+        : [];
+    $guests_config = isset($registration_config['guests']) && is_array($registration_config['guests'])
+        ? $registration_config['guests']
+        : [];
+    $guest_label_singular = trim((string) ($guests_config['label_singular'] ?? 'Guest'));
+    $guest_label_plural = trim((string) ($guests_config['label_plural'] ?? 'Guests'));
+    if ($guest_label_singular === '') {
+        $guest_label_singular = 'Guest';
+    }
+    if ($guest_label_plural === '') {
+        $guest_label_plural = 'Guests';
+    }
+
+    $mode = (string) ($registration_config['mode'] ?? 'individual');
+    $is_group = str_starts_with($mode, 'group');
+
+    $primary = [
+        'full_name'    => 'Alex Tan',
+        'email'        => 'alex.tan@example.com',
+        'contact'      => '+65 9123 4567',
+        'church_name'  => 'Sample Church',
+        'title'        => 'Mr',
+        'order_number' => 'PREVIEW-0001',
+        'role'         => 'primary',
+        'role_label'   => 'Primary',
+        'heading'      => '',
+        'fields'       => [],
+    ];
+
+    $members = [$primary];
+    if ($is_group) {
+        $members[] = [
+            'full_name'    => 'Jordan Lim',
+            'email'        => 'jordan.lim@example.com',
+            'contact'      => '+65 9876 5432',
+            'church_name'  => 'Sample Church',
+            'title'        => 'Ms',
+            'order_number' => 'PREVIEW-0002',
+            'role'         => 'member',
+            'role_label'   => 'Member',
+            'heading'      => '',
+            'fields'       => [],
+        ];
+    }
+
+    $guests = [];
+    if (!empty($guests_config['enabled'])) {
+        $guests[] = [
+            'full_name'    => 'Sam Wong',
+            'email'        => 'sam.wong@example.com',
+            'contact'      => '',
+            'church_name'  => '',
+            'title'        => '',
+            'order_number' => '',
+            'role'         => 'guest',
+            'role_label'   => $guest_label_singular,
+            'heading'      => $guest_label_singular . ' 1',
+            'fields'       => [
+                ['label' => 'Name', 'value' => 'Sam Wong'],
+                ['label' => 'Email', 'value' => 'sam.wong@example.com'],
+            ],
+        ];
+    }
+
+    $package_label = 'Individual';
+    if ($is_group) {
+        $package_label = $mode === 'group_per_head' ? 'Group (per head)' : 'Group';
+    }
+
+    return [
+        'source'                => 'preview',
+        'registration_id'       => 0,
+        'order_number'          => 'PREVIEW-0001',
+        'confirmation_number'   => 'CONF-PREVIEW',
+        'already_sent'          => false,
+        'to_email'              => $primary['email'],
+        'event'                 => $event_row,
+        'primary'               => $primary,
+        'members'               => $members,
+        'guests'                => $guests,
+        'guest_label_singular'  => $guest_label_singular,
+        'guest_label_plural'    => $guest_label_plural,
+        'package_label'         => $package_label,
+        'package_slug'          => '',
+        'locale'                => $locale,
+        'amount_display'        => $currency . ' ' . number_format($amount, 2),
+        'payment_method'        => $is_free ? 'N/A' : 'Card',
+        'payment_status'        => 'paid',
+        'registration_mode'     => $mode,
+        'member_count'          => count($members),
+        'show_members'          => count($members) > 1,
+        'show_guests'           => $guests !== [],
+        'show_package'          => $package_label !== '' && strcasecmp($package_label, 'Individual') !== 0,
+        'group_incomplete'      => false,
+        'group_member_count'    => count($members),
+        'group_member_max'      => count($members),
+        'group_slots_remaining' => 0,
+        'manage_group_url'      => '',
+    ];
+}
+
+/**
+ * Render the payment-confirmation email HTML for admin preview.
+ *
+ * @param array<string, mixed> $event
+ */
+function rm_email_render_event_preview(array $event): string
+{
+    $context = rm_email_build_preview_context($event);
+
+    return rm_email_render('payment-confirmation', $context);
+}
+
+/**
+ * Subject line shown above the admin email preview.
+ *
+ * @param array<string, mixed> $context
+ */
+function rm_email_preview_subject_from_context(array $context): string
+{
+    $event_title = trim((string) ($context['event']['title'] ?? 'Event'));
+    $locale = (string) ($context['locale'] ?? 'en');
+    $order = (string) ($context['order_number'] ?? 'PREVIEW-0001');
+
+    if (function_exists('rm__')) {
+        return sanitize_text_field(rm__(
+            'email.subject',
+            $locale,
+            ['event' => $event_title, 'order' => $order]
+        ));
+    }
+
+    return $event_title . ' — Registration confirmed (' . $order . ')';
+}
+
+/**
+ * @param array<string, mixed> $event
+ */
+function rm_email_preview_subject(array $event): string
+{
+    return rm_email_preview_subject_from_context(rm_email_build_preview_context($event));
 }

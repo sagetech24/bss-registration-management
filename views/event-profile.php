@@ -160,6 +160,8 @@ if (!empty($event_card['categories']) && is_array($event_card['categories'])) {
             <?php include __DIR__ . '/partials/event-profile-addons.php'; ?>
         <?php elseif ($profile_tab === 'custom-form') : ?>
             <?php include __DIR__ . '/partials/event-profile-custom-form.php'; ?>
+        <?php elseif ($profile_tab === 'email-settings') : ?>
+            <?php include __DIR__ . '/partials/event-profile-email-settings.php'; ?>
         <?php else : ?>
             <?php include __DIR__ . '/partials/event-profile-settings.php'; ?>
         <?php endif; ?>
