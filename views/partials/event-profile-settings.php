@@ -47,6 +47,7 @@ $guest_max = (int) ($guests_config['max'] ?? 0);
 $guest_event_max = (int) ($guests_config['event_max'] ?? 0);
 $guest_price = $guests_config['price'] ?? 0;
 $guest_price_value = (string) $guest_price;
+$guests_allow_post = !isset($guests_config['allow_post_registration']) || !empty($guests_config['allow_post_registration']);
 $admin_guest_fields = rm_form_present_admin_guest_fields($registration_config);
 ?>
 
@@ -62,6 +63,7 @@ document.addEventListener('alpine:init', () => {
         showCustomFields: false,
         showFieldOverrides: false,
         guestsEnabled: <?php echo $guests_enabled ? 'true' : 'false'; ?>,
+        guestsAllowPostRegistration: <?php echo $guests_allow_post ? 'true' : 'false'; ?>,
         guestFields: <?php echo wp_json_encode($admin_guest_fields); ?>,
         showGuestFields: false,
         coreFieldDefs: <?php echo wp_json_encode(array_map(static function (array $def): array {
@@ -263,6 +265,15 @@ document.addEventListener('alpine:init', () => {
                                 </div>
                             </div>
                         </div>
+
+                        <label class="flex items-start gap-3">
+                            <input type="hidden" name="guests_allow_post_registration" :value="guestsAllowPostRegistration ? '1' : '0'" />
+                            <input type="checkbox" class="mt-1 rounded border-slate-300 text-indigo-700 focus:ring-indigo-600" x-model="guestsAllowPostRegistration" />
+                            <span>
+                                <span class="block text-sm font-medium text-slate-800">Allow add-ons after registration</span>
+                                <span class="block text-xs text-slate-500 mt-0.5">Primary registrants can look up their registration later and add guests via a separate form and checkout.</span>
+                            </span>
+                        </label>
     
                         <div class="rounded-lg border border-slate-200 bg-white p-4">
                             <input type="hidden" name="guest_fields_submitted" value="1" />

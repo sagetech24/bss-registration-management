@@ -242,6 +242,7 @@ function rm_handle_save_registration_settings_post(int $event_id, string $source
         'currency'                => $_POST['currency'] ?? null,
         'base_price'              => $_POST['base_price'] ?? null,
         'guests_enabled'          => $_POST['guests_enabled'] ?? null,
+        'guests_allow_post_registration' => $_POST['guests_allow_post_registration'] ?? null,
         'guest_label_singular'    => $_POST['guest_label_singular'] ?? null,
         'guest_label_plural'      => $_POST['guest_label_plural'] ?? null,
         'guest_min'               => $_POST['guest_min'] ?? null,
