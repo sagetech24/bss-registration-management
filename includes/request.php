@@ -267,7 +267,22 @@ function rm_active_nav(string $view_action): string
 
 function rm_is_public_view(string $view_action): bool
 {
-    return in_array($view_action, ['register', 'payment-return', 'manage-group'], true);
+    return in_array($view_action, [
+        'register',
+        'payment-return',
+        'manage-group',
+        'add-guests',
+        'add-guests-payment-return',
+    ], true);
+}
+
+function rm_get_addon_purchase_id(): int
+{
+    if (!isset($_GET['purchase_id'])) {
+        return 0;
+    }
+
+    return absint(wp_unslash((string) $_GET['purchase_id']));
 }
 
 function rm_get_pending_id(): int

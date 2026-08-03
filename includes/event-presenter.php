@@ -73,6 +73,23 @@ function rm_present_event_card(array $event, string $page_url): array
         $profile_args['event_id'] = $event_id;
     }
 
+    $registrant_count = null;
+    if (rm_event_uses_v2_registration($event) && rm_event_registration_tables_exist() && $event_id > 0) {
+        global $wpdb;
+        $registrant_count = (int) $wpdb->get_var(
+            $wpdb->prepare(
+                'SELECT COUNT(*) FROM `event_registrant` WHERE `event_id` = %d',
+                $event_id
+            )
+        );
+    }
+
+    $package_urls = rm_present_event_package_urls($event, $program_code);
+    $promo_count = count($package_urls);
+    $promo_label = $promo_count === 1
+        ? '1 Promo Offer'
+        : $promo_count . ' Promo Offers';
+
     return [
         'title'             => $title,
         'program_code'      => $program_code,
@@ -87,7 +104,10 @@ function rm_present_event_card(array $event, string $page_url): array
         'registration_href' => $program_code !== ''
             ? rm_registration_url(['event_code' => $program_code])
             : '',
-        'package_urls'      => rm_present_event_package_urls($event, $program_code),
+        'package_urls'      => $package_urls,
+        'promo_count'       => $promo_count,
+        'promo_label'       => $promo_label,
+        'registrant_count'  => $registrant_count,
     ];
 }
 

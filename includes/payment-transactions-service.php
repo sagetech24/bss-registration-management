@@ -86,9 +86,7 @@ function rm_build_payment_transactions_data(): array
 
 function rm_format_payment_transaction_datetime(string $datetime): string
 {
-    $timestamp = trim($datetime) !== '' ? (strtotime($datetime) ?: 0) : 0;
-
-    return $timestamp > 0 ? wp_date('M j, Y g:iA', $timestamp) : 'N/A';
+    return rm_format_site_datetime($datetime);
 }
 
 /**

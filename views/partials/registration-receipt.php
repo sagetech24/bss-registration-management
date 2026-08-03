@@ -13,8 +13,12 @@ $register_another_href = (string) ($receipt['register_another_href'] ?? '');
 $event_landing_href = (string) ($receipt['event_landing_href'] ?? '');
 $message = trim((string) ($receipt['message'] ?? ''));
 $locale = (string) ($locale ?? 'en');
-$rt = static function (string $key) use ($locale): string {
-    return function_exists('rm__') ? rm__($key, $locale) : $key;
+$guest_label_plural = trim((string) ($receipt['guest_label_plural'] ?? 'Guests'));
+if ($guest_label_plural === '') {
+    $guest_label_plural = 'Guests';
+}
+$rt = static function (string $key, array $replace = []) use ($locale): string {
+    return function_exists('rm__') ? rm__($key, $locale, $replace) : $key;
 };
 
 /**
@@ -95,6 +99,36 @@ $render_detail_table = static function (array $rows): void {
                     class="mt-4 inline-flex items-center justify-center rounded-lg bg-indigo-700 px-5 py-2.5 text-sm font-medium text-white hover:bg-indigo-800 transition"
                 >
                     <?php echo esc_html($rt('email.add_remaining')); ?>
+                </a>
+            </div>
+        <?php endif; ?>
+        <?php
+        $add_guests_url = trim((string) ($receipt['add_guests_url'] ?? ''));
+        // $show_guests = !empty($receipt['show_guests']);
+        // $receipt_guests = is_array($receipt['guests'] ?? null) ? $receipt['guests'] : [];
+        ?>
+        <?php //if ($show_guests && $receipt_guests !== []) : ?>
+            <!-- <div class="mt-6 w-full max-w-xl rounded-xl border border-slate-200 bg-white p-5 text-left">
+                <p class="text-sm font-semibold text-slate-900"><?php //echo esc_html($rt('email.section.guests')); ?></p>
+                <ul class="mt-3 divide-y divide-slate-100 text-sm text-slate-700">
+                    <?php //foreach ($receipt_guests as $guest) : ?>
+                        <?php //if (!is_array($guest)) {
+                            //continue;
+                        //} ?>
+                        <li class="py-2"><?php //echo esc_html((string) ($guest['full_name'] ?? '—')); ?></li>
+                    <?php //endforeach; ?>
+                </ul>
+            </div> -->
+        <?php //endif; ?>
+        <?php if ($add_guests_url !== '') : ?>
+            <div class="mt-6 w-full max-w-xl rounded-xl border border-indigo-200 bg-indigo-50 p-5 text-left">
+                <p class="text-sm font-semibold text-indigo-900"><?php echo esc_html($rt('email.add_guests_later', ['guest' => $guest_label_plural])); ?></p>
+                <p class="mt-2 text-sm text-indigo-800"><?php echo esc_html($rt('email.add_guests_later_desc', ['guest' => $guest_label_plural])); ?></p>
+                <a
+                    href="<?php echo esc_url($add_guests_url); ?>"
+                    class="mt-4 inline-flex items-center justify-center rounded-lg bg-indigo-700 px-5 py-2.5 text-sm font-medium text-white hover:bg-indigo-800 transition"
+                >
+                    <?php echo esc_html($rt('email.add_guests_cta', ['guest' => $guest_label_plural])); ?>
                 </a>
             </div>
         <?php endif; ?>

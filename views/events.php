@@ -140,7 +140,12 @@
                                     }
                                     $card = rm_present_event_card($event, $page_url);
                                     ?>
-                                    <article class="bg-white border border-indigo-200 rounded-xl overflow-hidden shadow-sm flex flex-col h-full">
+                                    <article class="relative bg-white border border-indigo-200 rounded-xl overflow-hidden shadow-sm flex flex-col h-full">
+                                        <?php if (!empty($card['promo_count'])) : ?>
+                                            <span class="absolute top-4 -right-10 z-10 shadow-lg shadow-dark/20 inline-flex items-center justify-center text-center bg-red-600 w-36 h-8 text-[10px] font-medium text-white rotate-45">
+                                                <?php echo esc_html((string) ($card['promo_label'] ?? '')); ?>
+                                            </span>
+                                        <?php endif; ?>
                                         <?php if ($card['thumb_url'] !== '') : ?>
                                             <img class="h-48 w-full object-cover" src="<?php echo esc_url($card['thumb_url']); ?>" alt="<?php echo esc_attr($card['title']); ?>" />
                                         <?php else : ?>
@@ -193,7 +198,7 @@
                                                 <span class="text-slate-400">|</span>
                                                 <div class="text-center">
                                                     <a href="<?php echo esc_url($card['registrants_href']); ?>" class="text-xs font-medium text-indigo-700 hover:text-indigo-900">
-                                                        Registrants
+                                                        Registrants<?php if ($card['registrant_count'] !== null) : ?>(<?php echo esc_html((string) (int) $card['registrant_count']); ?>)<?php endif; ?>
                                                     </a>
                                                 </div>
                                                 <?php if ($card['registration_href'] !== '') : ?>

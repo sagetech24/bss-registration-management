@@ -32,7 +32,11 @@ function rm_v2_count_event_addons(int $event_id): int
         )
     );
 
-    return max(0, $confirmed + $pending);
+    $pending_purchases = function_exists('rm_v2_count_pending_event_addon_purchase_guests')
+        ? rm_v2_count_pending_event_addon_purchase_guests($event_id)
+        : 0;
+
+    return max(0, $confirmed + $pending + $pending_purchases);
 }
 
 /**
@@ -732,7 +736,8 @@ function rm_v2_insert_guest_lines(
     array $pricing,
     string $status,
     int $member_offset = 0,
-    string $primary_order_number = ''
+    string $primary_order_number = '',
+    int $guest_suffix_offset = 0
 ): array {
     global $wpdb;
 
@@ -751,7 +756,7 @@ function rm_v2_insert_guest_lines(
             'member_index'     => $member_offset + $gi,
             'role'             => 'addon',
             'order_number'     => $primary_order_number !== ''
-                ? rm_format_guest_order_number($primary_order_number, $gi)
+                ? rm_format_guest_order_number($primary_order_number, $guest_suffix_offset + $gi)
                 : '',
             'nric'             => $core['nric'] ?? null,
             'title'            => $core['title'] ?? null,

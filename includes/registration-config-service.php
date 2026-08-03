@@ -236,6 +236,7 @@ function rm_registration_config_defaults(): array
             'max'            => 0,
             'event_max'      => 0,
             'price'          => 0,
+            'allow_post_registration' => true,
             'form'           => [
                 'fields' => [],
             ],
@@ -455,6 +456,11 @@ function rm_parse_registration_config(array $event): array
     $config['guests']['max'] = max($config['guests']['min'], (int) ($config['guests']['max'] ?? 0));
     $config['guests']['event_max'] = max(0, (int) ($config['guests']['event_max'] ?? 0));
     $config['guests']['price'] = max(0, (float) ($config['guests']['price'] ?? 0));
+    if (!array_key_exists('allow_post_registration', $config['guests'])) {
+        $config['guests']['allow_post_registration'] = true;
+    } else {
+        $config['guests']['allow_post_registration'] = !empty($config['guests']['allow_post_registration']);
+    }
     if (!isset($config['guests']['form']) || !is_array($config['guests']['form'])) {
         $config['guests']['form'] = ['fields' => []];
     }
@@ -856,6 +862,18 @@ function rm_normalize_registration_settings_input(array $input, array $existing_
         $guest_event_max = 0;
     }
 
+    $guests_allow_post_raw = $input['guests_allow_post_registration'] ?? null;
+    if ($guests_allow_post_raw === null) {
+        $guests_allow_post = array_key_exists('allow_post_registration', $existing_guests)
+            ? !empty($existing_guests['allow_post_registration'])
+            : true;
+    } else {
+        $guests_allow_post = $guests_allow_post_raw === true
+            || $guests_allow_post_raw === 1
+            || $guests_allow_post_raw === '1'
+            || $guests_allow_post_raw === 'true';
+    }
+
     $registration = $existing;
     $registration['version'] = RM_REGISTRATION_VERSION;
     $registration['mode'] = $mode;
@@ -879,6 +897,7 @@ function rm_normalize_registration_settings_input(array $input, array $existing_
         'max'            => $guest_max,
         'event_max'      => $guest_event_max,
         'price'          => $guest_price,
+        'allow_post_registration' => $guests_enabled ? $guests_allow_post : false,
         'form'           => [
             'fields' => $guest_form_fields,
         ],

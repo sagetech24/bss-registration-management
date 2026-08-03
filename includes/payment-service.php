@@ -1437,6 +1437,185 @@ function rm_payment_initiate_checkout(
 }
 
 /**
+ * @param array<string, mixed> $event
+ * @param array<string, mixed> $header
+ * @return array{ok: bool, url: string, error: string}
+ */
+function rm_payment_initiate_addon_checkout(
+    int $purchase_id,
+    array $event,
+    array $header,
+    string $event_code
+): array {
+    if ($purchase_id < 1 || !function_exists('rm_addon_purchase_load')) {
+        return [
+            'ok'    => false,
+            'url'   => '',
+            'error' => 'Add-on purchase could not be found.',
+        ];
+    }
+
+    $purchase = rm_addon_purchase_load($purchase_id);
+    if ($purchase === null) {
+        return [
+            'ok'    => false,
+            'url'   => '',
+            'error' => 'Add-on purchase could not be found.',
+        ];
+    }
+
+    $amount = (float) ($purchase['total_amount'] ?? 0);
+    if ($amount <= 0) {
+        return [
+            'ok'    => false,
+            'url'   => '',
+            'error' => 'This add-on does not require payment.',
+        ];
+    }
+
+    $confirmation = trim((string) ($purchase['confirmation_number'] ?? ''));
+    $reference = rm_addon_purchase_reference($purchase_id, $confirmation);
+
+    $registrant = [
+        'christianName' => '',
+        'familyName'    => '',
+        'email'         => (string) ($header['primary_email'] ?? ''),
+        'contact'       => '',
+    ];
+
+    $primary_line = function_exists('rm_guest_manage_load_primary_line')
+        ? rm_guest_manage_load_primary_line((int) ($header['id'] ?? 0))
+        : null;
+    if (is_array($primary_line)) {
+        $registrant['christianName'] = (string) ($primary_line['christian_name'] ?? '');
+        $registrant['familyName'] = (string) ($primary_line['family_name'] ?? '');
+        $registrant['contact'] = (string) ($primary_line['contact'] ?? '');
+    }
+
+    $event_id = isset($event['id']) ? absint($event['id']) : 0;
+    $environment = rm_payment_environment($event_id);
+    $currency = rm_registration_currency($event);
+    $hitpay_currency = rm_registration_currency_for_hitpay($currency);
+    $title = isset($event['title']) ? sanitize_text_field((string) $event['title']) : '';
+
+    $redirect_args = [
+        'action'      => 'add-guests-payment-return',
+        'event_code'  => $event_code,
+        'purchase_id' => $purchase_id,
+    ];
+    $redirect_url = add_query_arg($redirect_args, rm_page_url());
+
+    $full_name = trim($registrant['christianName'] . ' ' . $registrant['familyName']);
+    $payload = [
+        'amount'                  => round($amount, 2),
+        'currency'                => $hitpay_currency,
+        'name'                    => $full_name !== '' ? $full_name : 'Registrant',
+        'email'                   => $registrant['email'],
+        'phone'                   => $registrant['contact'],
+        'purpose'                 => sanitize_text_field(
+            ($title !== '' ? $title . ' — ' : '') . 'Guest add-on'
+        ),
+        'reference_number'        => $reference,
+        'allow_repeated_payments' => false,
+        'expires_after'           => '3 days',
+        'send_email'              => true,
+        'send_sms'                => true,
+        'redirect_url'            => $redirect_url,
+    ];
+
+    $result = rm_payment_api_request('POST', '/payment-requests', $environment, $payload);
+    if (!$result['ok'] || !is_array($result['data'])) {
+        return [
+            'ok'    => false,
+            'url'   => '',
+            'error' => $result['error'] !== '' ? $result['error'] : 'Failed to create payment request.',
+        ];
+    }
+
+    $id = isset($result['data']['id']) ? sanitize_text_field((string) $result['data']['id']) : '';
+    $url = isset($result['data']['url']) ? esc_url_raw((string) $result['data']['url']) : '';
+
+    if ($id === '' || $url === '') {
+        return [
+            'ok'    => false,
+            'url'   => '',
+            'error' => 'HitPay response was missing payment details.',
+        ];
+    }
+
+    if (!rm_payment_store_addon_request_id($purchase_id, $id)) {
+        error_log('[rm_payment] Failed to store payment request id for addon purchase ' . $purchase_id);
+    }
+
+    return [
+        'ok'    => true,
+        'url'   => $url,
+        'error' => '',
+    ];
+}
+
+function rm_payment_store_addon_request_id(int $purchase_id, string $request_id): bool
+{
+    global $wpdb;
+
+    if ($purchase_id < 1 || $request_id === '' || !rm_event_addon_purchase_schema_ready()) {
+        return false;
+    }
+
+    $updated = $wpdb->update(
+        'event_addon_purchase',
+        ['payment_request_id' => sanitize_text_field($request_id)],
+        ['id' => $purchase_id],
+        ['%s'],
+        ['%d']
+    );
+
+    return $updated !== false;
+}
+
+/**
+ * Try to finalize an addon purchase from webhook reference / payment request id.
+ *
+ * @return array{handled: bool, ok: bool, purchase_id: int, error: string, order_numbers: list<string>}
+ */
+function rm_payment_try_finalize_addon_webhook(
+    string $payment_request_id,
+    string $reference,
+    string $payment_option = 'N/A'
+): array {
+    $empty = [
+        'handled'       => false,
+        'ok'            => false,
+        'purchase_id'   => 0,
+        'error'         => '',
+        'order_numbers' => [],
+    ];
+
+    if (!function_exists('rm_finalize_addon_purchase') || !rm_event_addon_purchase_schema_ready()) {
+        return $empty;
+    }
+
+    $purchase_id = rm_addon_purchase_id_from_reference($reference);
+    if ($purchase_id < 1 && $payment_request_id !== '') {
+        $purchase_id = rm_addon_purchase_find_by_payment_request_id($payment_request_id);
+    }
+
+    if ($purchase_id < 1) {
+        return $empty;
+    }
+
+    $result = rm_finalize_addon_purchase($purchase_id, $payment_request_id, $payment_option);
+
+    return [
+        'handled'       => true,
+        'ok'            => $result['ok'],
+        'purchase_id'   => $purchase_id,
+        'error'         => $result['error'],
+        'order_numbers' => $result['order_numbers'],
+    ];
+}
+
+/**
  * @return array<string, mixed>
  */
 function rm_payment_parse_webhook_payload(string $raw_payload = ''): array
@@ -1577,6 +1756,50 @@ function rm_payment_process_webhook_payload(array $payload): array
     }
 
     $lookup_reference = trim((string) ($lookup['data']['reference_number'] ?? ''));
+    $payment = is_array($payload['payments'][0] ?? null) ? $payload['payments'][0] : [];
+    $payment_option = !empty($payment['payment_type'])
+        ? (string) $payment['payment_type']
+        : 'N/A';
+
+    foreach (array_unique(array_filter([$lookup_reference, $payload_reference])) as $reference) {
+        $addon_result = rm_payment_try_finalize_addon_webhook(
+            $payment_request_id,
+            $reference,
+            $payment_option
+        );
+        if (!$addon_result['handled']) {
+            continue;
+        }
+
+        if (!$addon_result['ok']) {
+            error_log(
+                '[rm_payment] Addon webhook finalize failed for purchase '
+                . $addon_result['purchase_id'] . ': ' . $addon_result['error']
+            );
+
+            return rm_payment_build_webhook_response(
+                $payload,
+                false,
+                'Webhook received but add-on purchase was not finalized.',
+                rm_payment_summarize_webhook_transaction($payload, [
+                    'event_id' => $event_id,
+                    'error'    => $addon_result['error'],
+                ])
+            );
+        }
+
+        return rm_payment_build_webhook_response(
+            $payload,
+            true,
+            'Add-on payment processed.',
+            rm_payment_summarize_webhook_transaction($payload, [
+                'event_id'     => $event_id,
+                'finalized'    => true,
+                'order_number' => implode(', ', $addon_result['order_numbers']),
+            ])
+        );
+    }
+
     if ($pending_id < 1 || $event_id < 1) {
         $resolved_lookup = rm_payment_resolve_reference($lookup_reference);
         if ($pending_id < 1) {

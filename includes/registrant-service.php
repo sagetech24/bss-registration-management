@@ -423,6 +423,23 @@ function rm_event_addon_field_columns(?array $event): array
 }
 
 /**
+ * Guest add-ons use sub-order numbers ({primary}-01); package slots with role=addon do not.
+ *
+ * @param array<string, mixed> $row Normalized registrant row or DB row
+ */
+function rm_registrant_is_guest_addon_row(array $row): bool
+{
+    $role = (string) ($row['_role'] ?? $row['role'] ?? '');
+    if ($role !== 'addon') {
+        return false;
+    }
+
+    $order_number = trim((string) ($row['orderNumber'] ?? $row['order_number'] ?? ''));
+
+    return $order_number !== '' && preg_match('/-\d{2}$/', $order_number) === 1;
+}
+
+/**
  * Present all addon (guest) rows for the event admin addons tab.
  *
  * @param array<int, array<string, mixed>> $registrants
@@ -476,7 +493,7 @@ function rm_present_event_addon_rows(array $registrants, ?array $event = null): 
 
     $rows = [];
     foreach ($registrants as $row) {
-        if (!is_array($row) || ($row['_role'] ?? '') !== 'addon') {
+        if (!is_array($row) || !rm_registrant_is_guest_addon_row($row)) {
             continue;
         }
 
@@ -563,7 +580,7 @@ function rm_registrants_addons_only(array $registrants): array
         if (!is_array($row)) {
             continue;
         }
-        if (($row['_role'] ?? '') === 'addon') {
+        if (rm_registrant_is_guest_addon_row($row)) {
             $out[] = $row;
         }
     }
@@ -600,7 +617,7 @@ function rm_attach_guests_to_primary_registrants(array $registrants): array
 {
     $guests_by_registration = [];
     foreach ($registrants as $row) {
-        if (!is_array($row) || ($row['_role'] ?? '') !== 'addon') {
+        if (!is_array($row) || !rm_registrant_is_guest_addon_row($row)) {
             continue;
         }
         $registration_id = isset($row['_registration_id']) ? (int) $row['_registration_id'] : 0;
@@ -876,7 +893,15 @@ function rm_fetch_registrants_from_db(int $event_id, ?array $event = null): arra
     }
 
     if (is_array($event) && rm_event_uses_v2_registration($event) && rm_event_registration_tables_exist()) {
-        return rm_fetch_v2_registrants_from_db($event_id, $event);
+        $fetch = rm_fetch_v2_registrants_from_db($event_id, $event);
+        if ($fetch['error'] === '' && function_exists('rm_fetch_pending_addon_purchase_registrant_rows')) {
+            $pending_addon_rows = rm_fetch_pending_addon_purchase_registrant_rows($event_id, $event);
+            if ($pending_addon_rows !== []) {
+                $fetch['registrants'] = array_merge($fetch['registrants'], $pending_addon_rows);
+            }
+        }
+
+        return $fetch;
     }
 
     global $wpdb;

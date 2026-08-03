@@ -365,3 +365,71 @@ function rm_event_registrant_reported_schema_ready(): bool
     return rm_schema_table_exists('event_registrant')
         && rm_schema_column_exists('event_registrant', 'reported');
 }
+
+/**
+ * Idempotent install of event_addon_purchase table.
+ *
+ * @return array{ok: bool, error: string, created: list<string>}
+ */
+function rm_install_event_addon_purchase_schema(): array
+{
+    global $wpdb;
+
+    $created = [];
+
+    if (rm_schema_table_exists('event_addon_purchase')) {
+        return [
+            'ok'      => true,
+            'error'   => '',
+            'created' => $created,
+        ];
+    }
+
+    $migration_file = dirname(__DIR__) . '/migrations/006_event_addon_purchase.sql';
+    if (!is_readable($migration_file)) {
+        return [
+            'ok'      => false,
+            'error'   => 'Addon purchase migration file not found.',
+            'created' => $created,
+        ];
+    }
+
+    $sql = file_get_contents($migration_file);
+    if (!is_string($sql) || trim($sql) === '') {
+        return [
+            'ok'      => false,
+            'error'   => 'Addon purchase migration file is empty.',
+            'created' => $created,
+        ];
+    }
+
+    $statements = rm_schema_split_sql_statements($sql);
+    foreach ($statements as $statement) {
+        $result = $wpdb->query($statement);
+        if ($result === false) {
+            return [
+                'ok'      => false,
+                'error'   => $wpdb->last_error !== '' ? $wpdb->last_error : 'Failed to run addon purchase migration.',
+                'created' => $created,
+            ];
+        }
+    }
+
+    if (rm_schema_table_exists('event_addon_purchase')) {
+        $created[] = 'event_addon_purchase';
+    }
+
+    return [
+        'ok'      => true,
+        'error'   => '',
+        'created' => $created,
+    ];
+}
+
+/**
+ * @return bool
+ */
+function rm_event_addon_purchase_schema_ready(): bool
+{
+    return rm_schema_table_exists('event_addon_purchase');
+}

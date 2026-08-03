@@ -176,12 +176,14 @@ function rm_validate_event_promotion(array $promotion): array
         ];
     }
 
-    $now = current_time('timestamp');
+    // True Unix time: rm_parse_datetime_to_timestamp() already resolves the stored
+    // naive datetimes against wp_timezone(), so current_time() would double the offset.
+    $now = time();
 
     $valid_from = $promotion['valid_from'] ?? null;
     if (is_string($valid_from) && $valid_from !== '') {
-        $from_ts = strtotime($valid_from);
-        if ($from_ts !== false && $now < $from_ts) {
+        $from_ts = rm_parse_datetime_to_timestamp($valid_from);
+        if ($from_ts > 0 && $now < $from_ts) {
             return [
                 'ok'    => false,
                 'error' => 'This registration package is not available yet.',
@@ -191,8 +193,8 @@ function rm_validate_event_promotion(array $promotion): array
 
     $valid_until = $promotion['valid_until'] ?? null;
     if (is_string($valid_until) && $valid_until !== '') {
-        $until_ts = strtotime($valid_until);
-        if ($until_ts !== false && $now > $until_ts) {
+        $until_ts = rm_parse_datetime_to_timestamp($valid_until);
+        if ($until_ts > 0 && $now > $until_ts) {
             return [
                 'ok'    => false,
                 'error' => 'This registration package has expired.',
@@ -510,27 +512,7 @@ function rm_normalize_event_promotion_input(array $input, int $event_id): array
  */
 function rm_normalize_promotion_datetime($value)
 {
-    if ($value === null || $value === '') {
-        return null;
-    }
-
-    $raw = trim((string) $value);
-    if ($raw === '') {
-        return null;
-    }
-
-    $raw = str_replace('T', ' ', $raw);
-    if (preg_match('/^\d{4}-\d{2}-\d{2}$/', $raw)) {
-        $raw .= ' 00:00:00';
-    } elseif (preg_match('/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$/', $raw)) {
-        $raw .= ':00';
-    }
-
-    if (strtotime($raw) === false) {
-        return false;
-    }
-
-    return $raw;
+    return rm_normalize_site_datetime($value);
 }
 
 /**

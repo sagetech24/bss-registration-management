@@ -6,6 +6,7 @@ require_once __DIR__ . '/includes/schema-install.php';
 require_once __DIR__ . '/includes/i18n-service.php';
 require_once __DIR__ . '/includes/registration-config-service.php';
 require_once __DIR__ . '/includes/form-schema-service.php';
+require_once __DIR__ . '/includes/datetime-service.php';
 require_once __DIR__ . '/includes/event-promotion-service.php';
 require_once __DIR__ . '/includes/pricing-service.php';
 require_once __DIR__ . '/includes/event-registration-service.php';
@@ -19,6 +20,7 @@ require_once __DIR__ . '/includes/registration-service.php';
 require_once __DIR__ . '/includes/payment-service.php';
 require_once __DIR__ . '/includes/email-service.php';
 require_once __DIR__ . '/includes/group-manage-service.php';
+require_once __DIR__ . '/includes/guest-manage-service.php';
 require_once __DIR__ . '/includes/hitpay-sync-service.php';
 require_once __DIR__ . '/includes/payment-transactions-service.php';
 require_once __DIR__ . '/includes/migrate-registrant-service.php';
@@ -36,6 +38,8 @@ if (rm_event_registration_tables_exist() === false) {
     rm_install_event_promotions_schema();
 } elseif (rm_event_registrant_reported_schema_ready() === false) {
     rm_install_event_registrant_reported_schema();
+} elseif (rm_event_addon_purchase_schema_ready() === false) {
+    rm_install_event_addon_purchase_schema();
 }
 
 rm_legacy_redirect_bootstrap();

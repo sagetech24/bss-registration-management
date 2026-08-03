@@ -153,7 +153,7 @@ $strings_json = wp_json_encode($ui_strings);
                 <h3 class="text-sm text-slate-700" x-text="membersStepHeading"></h3>
                 <p class="text-sm text-slate-500" x-show="!isIndividual">
                     <span class="italic font-medium" x-text="t('wizard.note.prefix')"></span>
-                    This package requires exactly <span x-text="limits.max"></span> registrant(s). Please fill up the additional information below
+                    <span x-text="t('wizard.members.exact_package_note')"></span>
                 </p>
 
                 <fieldset x-show="!isIndividual" class="rounded-lg border border-slate-200 p-4 space-y-4">

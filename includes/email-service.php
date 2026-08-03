@@ -76,6 +76,12 @@ function rm_email_send_payment_confirmation(string $order_number): array
 
     $headers = rm_email_build_headers($context);
 
+    // Claim the send slot BEFORE dry-run/wp_mail so concurrent webhook +
+    // payment-return callers cannot all pass the already_sent check.
+    if (!rm_email_claim_confirmation_send($context)) {
+        return rm_email_result(true, '', false, false, true);
+    }
+
     if (!rm_email_send_enabled()) {
         rm_email_log_dry_run($to, $subject, $body, $order_number);
 
@@ -84,21 +90,231 @@ function rm_email_send_payment_confirmation(string $order_number): array
 
     $sent = wp_mail($to, $subject, $body, $headers);
     if (!$sent) {
+        rm_email_release_confirmation_claim($context);
         error_log('[rm_email] Failed to send confirmation email to ' . $to . ' for order ' . $order_number);
 
         return rm_email_result(false, 'Could not send confirmation email. Check mail configuration.');
     }
 
-    if (!rm_email_mark_confirmation_sent($context)) {
-        error_log(
-            '[rm_email] Confirmation email sent to ' . $to
-            . ' but failed to update is_email_confirmation_sent for order ' . $order_number
-        );
+    return rm_email_result(true, '', true);
+}
 
-        return rm_email_result(
-            true,
-            'Email sent but failed to update confirmation-sent flag.',
-            true
+/**
+ * Send confirmation email after post-registration guest add-on(s).
+ *
+ * @return array{ok: bool, error: string, sent: bool, dry_run: bool, skipped: bool}
+ */
+function rm_email_send_addon_confirmation(
+    int $registration_id,
+    int $guest_count,
+    int $suffix_offset = 0,
+    int $purchase_id = 0
+): array {
+    if ($registration_id < 1 || $guest_count < 1) {
+        return rm_email_result(false, 'Registration and guest count are required.');
+    }
+
+    if ($purchase_id > 0 && rm_event_addon_purchase_schema_ready()) {
+        global $wpdb;
+        $already = (int) $wpdb->get_var(
+            $wpdb->prepare(
+                'SELECT `is_email_confirmation_sent` FROM `event_addon_purchase` WHERE `id` = %d LIMIT 1',
+                $purchase_id
+            )
+        );
+        if ($already === 1) {
+            return rm_email_result(true, '', false, false, true);
+        }
+    }
+
+    $header = function_exists('rm_guest_manage_fetch_header')
+        ? rm_guest_manage_fetch_header($registration_id)
+        : null;
+    if ($header === null) {
+        return rm_email_result(false, 'Registration could not be found for add-on email.');
+    }
+
+    $event_id = (int) ($header['event_id'] ?? 0);
+    $event = rm_email_load_event_row($event_id);
+    if ($event_id < 1) {
+        return rm_email_result(false, 'Event could not be found for add-on email.');
+    }
+
+    $locale = 'en';
+    $snapshot_raw = $header['form_schema_snapshot'] ?? null;
+    if (is_string($snapshot_raw) && trim($snapshot_raw) !== '') {
+        $decoded_snap = json_decode($snapshot_raw, true);
+        if (is_array($decoded_snap) && !empty($decoded_snap['locale'])) {
+            $locale = rm_normalize_locale((string) $decoded_snap['locale']);
+        }
+    }
+    if ($locale === 'en' && function_exists('rm_resolve_locale')) {
+        $locale = rm_resolve_locale($event);
+    }
+
+    $guest_lines = function_exists('rm_guest_manage_load_guest_lines')
+        ? rm_guest_manage_load_guest_lines($registration_id)
+        : [];
+    $guest_lines = array_slice($guest_lines, -$guest_count);
+    if ($guest_lines === []) {
+        return rm_email_result(false, 'Guest lines could not be loaded for add-on email.');
+    }
+
+    $guest_schema = ['label_singular' => 'Guest', 'label_plural' => 'Guests', 'fields' => []];
+    $form_snapshot = $header['form_schema_snapshot'] ?? null;
+    if (is_string($form_snapshot) && $form_snapshot !== '') {
+        $decoded_form = json_decode($form_snapshot, true);
+        if (is_array($decoded_form)) {
+            $guest_schema['fields'] = is_array($decoded_form['guest'] ?? null) ? $decoded_form['guest'] : [];
+            $guest_meta = is_array($decoded_form['guest_meta'] ?? null) ? $decoded_form['guest_meta'] : [];
+            $guest_schema['label_singular'] = (string) ($guest_meta['label_singular'] ?? 'Guest');
+            $guest_schema['label_plural'] = (string) ($guest_meta['label_plural'] ?? 'Guests');
+        }
+    }
+    if ($guest_schema['fields'] === [] && function_exists('rm_parse_guest_form_schema')) {
+        $live_schema = rm_parse_guest_form_schema($event);
+        $guest_schema['fields'] = $live_schema['fields'] ?? [];
+        $guest_schema['label_singular'] = (string) ($live_schema['label_singular'] ?? 'Guest');
+        $guest_schema['label_plural'] = (string) ($live_schema['label_plural'] ?? 'Guests');
+    }
+    // Prefer current event settings labels for display copy.
+    if (function_exists('rm_parse_registration_config')) {
+        $guests_cfg = rm_parse_registration_config($event)['guests'] ?? [];
+        if (is_array($guests_cfg)) {
+            $live_singular = trim((string) ($guests_cfg['label_singular'] ?? ''));
+            $live_plural = trim((string) ($guests_cfg['label_plural'] ?? ''));
+            if ($live_singular !== '') {
+                $guest_schema['label_singular'] = $live_singular;
+            }
+            if ($live_plural !== '') {
+                $guest_schema['label_plural'] = $live_plural;
+            }
+        }
+    }
+
+    $guest_field_defs = is_array($guest_schema['fields'] ?? null) ? $guest_schema['fields'] : [];
+    $guest_label = trim((string) ($guest_schema['label_singular'] ?? 'Guest'));
+    if ($guest_label === '') {
+        $guest_label = 'Guest';
+    }
+    $guest_label_plural = trim((string) ($guest_schema['label_plural'] ?? 'Guests'));
+    if ($guest_label_plural === '') {
+        $guest_label_plural = 'Guests';
+    }
+
+    $guests = [];
+    foreach ($guest_lines as $gi => $line) {
+        if (!is_array($line)) {
+            continue;
+        }
+        $presented = function_exists('rm_email_present_guest_line')
+            ? rm_email_present_guest_line($line, $guest_field_defs, $guest_label, $gi)
+            : null;
+        if (is_array($presented)) {
+            $guests[] = $presented;
+        }
+    }
+
+    $to = trim((string) ($header['primary_email'] ?? ''));
+    if ($to === '' || !is_email($to)) {
+        return rm_email_result(false, 'Primary registrant email is missing or invalid.');
+    }
+
+    $amount = 0.0;
+    $payment_method = 'N/A';
+    if ($purchase_id > 0) {
+        $purchase = rm_addon_purchase_load($purchase_id);
+        if (is_array($purchase)) {
+            $amount = (float) ($purchase['total_amount'] ?? 0);
+            $payment_option = trim((string) ($purchase['payment_option'] ?? ''));
+            if ($payment_option !== '' && function_exists('rm_payment_normalize_option')) {
+                $payment_method = rm_payment_normalize_option($payment_option);
+            }
+        }
+    }
+
+    $currency = function_exists('rm_registration_currency')
+        ? rm_registration_currency($event)
+        : 'SGD';
+
+    $add_guests_url = '';
+    if (function_exists('rm_guest_post_registration_allowed') && rm_guest_post_registration_allowed($event)) {
+        $meta = rm_guest_manage_capacity_meta($event, $header);
+        if (!empty($meta['can_add']) && function_exists('rm_add_guests_url_for_event')) {
+            $add_guests_url = rm_add_guests_url_for_event($event, $locale);
+            if (function_exists('rm_url_with_lang') && $add_guests_url !== '') {
+                $add_guests_url = rm_url_with_lang($add_guests_url, $locale);
+            }
+        }
+    }
+
+    $primary_name = trim((string) ($header['primary_order_number'] ?? ''));
+    $primary_line = function_exists('rm_guest_manage_load_primary_line')
+        ? rm_guest_manage_load_primary_line($registration_id)
+        : null;
+    if (is_array($primary_line)) {
+        $given = trim((string) ($primary_line['given_name'] ?? ''));
+        $family = trim((string) ($primary_line['family_name'] ?? ''));
+        $christian = trim((string) ($primary_line['christian_name'] ?? ''));
+        $primary_name = trim($christian . ' ' . $given . ' ' . $family);
+    }
+
+    $context = [
+        'to_email'            => $to,
+        'primary_name'        => $primary_name !== '' ? $primary_name : 'Registrant',
+        'event'               => $event,
+        'guests'              => $guests,
+        'guest_count'         => count($guests),
+        'guest_label_singular'=> $guest_schema['label_singular'],
+        'guest_label_plural'  => $guest_label_plural,
+        'locale'              => $locale,
+        'confirmation_number' => (string) ($header['confirmation_number'] ?? ''),
+        'order_number'        => (string) ($header['primary_order_number'] ?? ''),
+        'amount_display'      => $currency . ' ' . number_format($amount, 2),
+        'payment_method'      => $payment_method,
+        'show_payment'        => $amount > 0,
+        'add_guests_url'      => $add_guests_url,
+    ];
+
+    $event_title = trim((string) ($event['title'] ?? 'Event'));
+    $subject = sanitize_text_field(rm__(
+        'email.addon_subject',
+        $locale,
+        [
+            'event' => $event_title,
+            'count' => (string) count($guests),
+            'guest' => $guest_label_plural,
+        ]
+    ));
+
+    $body = rm_email_render('addon-confirmation', $context);
+    if ($body === '') {
+        return rm_email_result(false, 'Add-on confirmation email template could not be rendered.');
+    }
+
+    $headers = rm_email_build_headers($context);
+
+    if (!rm_email_send_enabled()) {
+        rm_email_log_dry_run($to, $subject, $body, (string) $registration_id);
+
+        return rm_email_result(true, '', false, true);
+    }
+
+    $sent = wp_mail($to, $subject, $body, $headers);
+    if (!$sent) {
+        error_log('[rm_email] Failed to send add-on confirmation email to ' . $to);
+
+        return rm_email_result(false, 'Could not send add-on confirmation email.');
+    }
+
+    if ($purchase_id > 0 && rm_event_addon_purchase_schema_ready()) {
+        global $wpdb;
+        $wpdb->update(
+            'event_addon_purchase',
+            ['is_email_confirmation_sent' => 1],
+            ['id' => $purchase_id],
+            ['%d'],
+            ['%d']
         );
     }
 
@@ -439,9 +655,12 @@ function rm_email_log_dry_run(string $to, string $subject, string $body, string 
 }
 
 /**
+ * Atomically claim the confirmation-email send slot.
+ * Returns true only for the first caller; later callers get false.
+ *
  * @param array<string, mixed> $context
  */
-function rm_email_mark_confirmation_sent(array $context): bool
+function rm_email_claim_confirmation_send(array $context): bool
 {
     global $wpdb;
 
@@ -459,12 +678,15 @@ function rm_email_mark_confirmation_sent(array $context): bool
                 'is_email_confirmation_sent' => 1,
                 'updated_at'                 => current_time('mysql'),
             ],
-            ['id' => $registration_id],
+            [
+                'id'                         => $registration_id,
+                'is_email_confirmation_sent' => 0,
+            ],
             ['%d', '%s'],
-            ['%d']
+            ['%d', '%d']
         );
 
-        return $updated !== false;
+        return $updated === 1;
     }
 
     if ($source === 'legacy') {
@@ -476,15 +698,74 @@ function rm_email_mark_confirmation_sent(array $context): bool
         $updated = $wpdb->update(
             'bss_registrant',
             ['isEmailConfirmationSent' => 1],
+            [
+                'orderNumber'             => $order_number,
+                'isEmailConfirmationSent' => 0,
+            ],
+            ['%d'],
+            ['%s', '%d']
+        );
+
+        return $updated === 1;
+    }
+
+    return false;
+}
+
+/**
+ * Release a previously claimed send slot after a failed wp_mail attempt.
+ *
+ * @param array<string, mixed> $context
+ */
+function rm_email_release_confirmation_claim(array $context): void
+{
+    global $wpdb;
+
+    $source = (string) ($context['source'] ?? '');
+
+    if ($source === 'v2') {
+        $registration_id = isset($context['registration_id']) ? (int) $context['registration_id'] : 0;
+        if ($registration_id < 1) {
+            return;
+        }
+
+        $wpdb->update(
+            'event_registration',
+            [
+                'is_email_confirmation_sent' => 0,
+                'updated_at'                 => current_time('mysql'),
+            ],
+            ['id' => $registration_id],
+            ['%d', '%s'],
+            ['%d']
+        );
+
+        return;
+    }
+
+    if ($source === 'legacy') {
+        $order_number = trim((string) ($context['order_number'] ?? ''));
+        if ($order_number === '') {
+            return;
+        }
+
+        $wpdb->update(
+            'bss_registrant',
+            ['isEmailConfirmationSent' => 0],
             ['orderNumber' => $order_number],
             ['%d'],
             ['%s']
         );
-
-        return $updated !== false;
     }
+}
 
-    return false;
+/**
+ * @param array<string, mixed> $context
+ */
+function rm_email_mark_confirmation_sent(array $context): bool
+{
+    return rm_email_claim_confirmation_send($context)
+        || !empty($context['already_sent']);
 }
 
 /**
@@ -669,6 +950,17 @@ function rm_email_load_v2_confirmation_context(string $order_number): ?array
         $manage_group_url = rm_url_with_lang($manage_group_url, $locale);
     }
 
+    $add_guests_url = '';
+    if (function_exists('rm_guest_post_registration_allowed') && rm_guest_post_registration_allowed($event)) {
+        $guest_capacity = rm_guest_manage_capacity_meta($event, $header);
+        if (!empty($guest_capacity['can_add']) && function_exists('rm_add_guests_url_for_event')) {
+            $add_guests_url = rm_add_guests_url_for_event($event, $locale);
+            if ($add_guests_url !== '' && function_exists('rm_url_with_lang')) {
+                $add_guests_url = rm_url_with_lang($add_guests_url, $locale);
+            }
+        }
+    }
+
     return [
         'source'              => 'v2',
         'registration_id'     => $registration_id,
@@ -698,6 +990,7 @@ function rm_email_load_v2_confirmation_context(string $order_number): ?array
         'group_member_max'    => (int) ($group_meta['member_max'] ?? 0),
         'group_slots_remaining' => (int) ($group_meta['slots_remaining'] ?? 0),
         'manage_group_url'    => $manage_group_url,
+        'add_guests_url'      => $add_guests_url,
     ];
 }
 

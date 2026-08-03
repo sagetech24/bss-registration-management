@@ -50,6 +50,7 @@ $guest_section_label = trim((string) ($guest_label_plural ?? ''));
 if ($guest_section_label === '') {
     $guest_section_label = $et('email.section.guests');
 }
+$guest_replace = ['guest' => $guest_section_label];
 
 /**
  * @param array<string, mixed> $person
@@ -317,6 +318,33 @@ $rm_email_detail_rows = static function (array $person) use ($et): array {
                                             or visit the manage page and sign in with confirmation number
                                             <strong><?php echo esc_html((string) ($confirmation_number ?? '')); ?></strong>
                                             and your primary email.
+                                        </p>
+                                    </td>
+                                </tr>
+                            </table>
+                        </td>
+                    </tr>
+                    <?php endif; ?>
+
+                    <?php
+                    $add_guests_url = trim((string) ($add_guests_url ?? ''));
+                    ?>
+                    <?php if ($add_guests_url !== '') : ?>
+                    <tr>
+                        <td style="padding:20px 28px 8px 28px;">
+                            <p style="margin:0 0 10px 0;font-size:13px;font-weight:bold;letter-spacing:0.04em;text-transform:uppercase;color:#1a5f4a;">
+                                <?php echo esc_html($et('email.add_guests_later', $guest_replace)); ?>
+                            </p>
+                            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="border:1px solid #c3ddfd;border-radius:3px;background-color:#eff6ff;">
+                                <tr>
+                                    <td style="padding:16px 18px;">
+                                        <p style="margin:0 0 16px 0;font-size:14px;line-height:1.55;color:#1e3a5f;">
+                                            <?php echo esc_html($et('email.add_guests_later_desc', $guest_replace)); ?>
+                                        </p>
+                                        <p style="margin:0;">
+                                            <a href="<?php echo esc_url($add_guests_url); ?>" style="display:inline-block;background-color:#1d4ed8;color:#ffffff;text-decoration:none;font-size:14px;font-weight:bold;padding:12px 18px;border-radius:4px;">
+                                                <?php echo esc_html($et('email.add_guests_cta', $guest_replace)); ?>
+                                            </a>
                                         </p>
                                     </td>
                                 </tr>

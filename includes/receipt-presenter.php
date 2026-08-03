@@ -336,6 +336,8 @@ function rm_present_registration_receipt(
         'group_member_max'      => (int) ($confirmation['group_member_max'] ?? 0),
         'group_slots_remaining' => (int) ($confirmation['group_slots_remaining'] ?? 0),
         'manage_group_url'      => $manage_group_url,
+        'add_guests_url'        => trim((string) ($confirmation['add_guests_url'] ?? '')),
+        'guest_label_plural'    => trim((string) ($confirmation['guest_label_plural'] ?? 'Guests')),
         'debug'                 => $debug,
     ];
 }

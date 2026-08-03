@@ -11,6 +11,10 @@ function rm_build_context(): array
         return rm_build_manage_group_context();
     }
 
+    if ($view_action === 'add-guests' || $view_action === 'add-guests-payment-return') {
+        return rm_build_add_guests_context();
+    }
+
     if (rm_is_public_view($view_action)) {
         return rm_build_register_context();
     }
