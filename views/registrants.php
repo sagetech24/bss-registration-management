@@ -77,6 +77,7 @@ document.addEventListener('alpine:init', () => {
             { value: 'individual', label: 'Individual' },
         ],
         packageFilter: <?php echo wp_json_encode($registrants_config['initialPackageFilter']); ?>,
+        searchQuery: <?php echo wp_json_encode(rm_get_registrant_search()); ?>,
         modalOpen: false,
         paymentLoading: false,
         paymentError: '',
@@ -93,7 +94,7 @@ document.addEventListener('alpine:init', () => {
         pagination: {
             current_page: 1,
             total_pages: 1,
-            per_page: 25,
+            per_page: 15,
             total: 0,
             has_prev: false,
             has_next: false,
@@ -115,6 +116,8 @@ document.addEventListener('alpine:init', () => {
 
             const params = new URLSearchParams(window.location.search);
             const page = Math.max(1, parseInt(params.get('reg_page') || '1', 10) || 1);
+            const search = (params.get('reg_search') || this.searchQuery || '').trim();
+            this.searchQuery = search;
             await this.load(page);
         },
         rowActionId(row) {
@@ -146,6 +149,12 @@ document.addEventListener('alpine:init', () => {
                 } else {
                     url.searchParams.delete('package_filter');
                 }
+                const search = (this.searchQuery || '').trim();
+                if (search !== '') {
+                    url.searchParams.set('reg_search', search);
+                } else {
+                    url.searchParams.delete('reg_search');
+                }
                 url.searchParams.set('reg_page', String(this.pagination.current_page || 1));
 
                 const response = await fetch(url.toString(), {
@@ -173,9 +182,17 @@ document.addEventListener('alpine:init', () => {
                 if (data.package_filter) {
                     this.packageFilter = data.package_filter;
                 }
+                if (typeof data.registrant_search === 'string') {
+                    this.searchQuery = data.registrant_search;
+                }
 
                 const pageUrl = new URL(window.location.href);
                 pageUrl.searchParams.set('reg_page', String(this.pagination.current_page || 1));
+                if (search !== '') {
+                    pageUrl.searchParams.set('reg_search', search);
+                } else {
+                    pageUrl.searchParams.delete('reg_search');
+                }
                 window.history.replaceState({}, '', pageUrl.toString());
             } catch (e) {
                 this.error = 'Failed to load registrants.';
@@ -192,6 +209,15 @@ document.addEventListener('alpine:init', () => {
             this.load(page);
         },
         async applyPackageFilter() {
+            this.pagination.current_page = 1;
+            await this.load(1);
+        },
+        async applySearch() {
+            this.pagination.current_page = 1;
+            await this.load(1);
+        },
+        async clearSearch() {
+            this.searchQuery = '';
             this.pagination.current_page = 1;
             await this.load(1);
         },
@@ -402,19 +428,23 @@ document.addEventListener('alpine:init', () => {
                         </div>
                     </div>
 
-                    <div
-                        x-show="!loading && packageSummary.length > 0"
-                        x-cloak
-                        class="mb-12 rounded-xl border border-slate-200 bg-white p-4"
-                        style="display: none;"
-                    >
-                        <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-3">
-                            <h4 class="text-sm font-semibold text-slate-800">By registration package</h4>
-                            <div class="flex items-center gap-2">
-                                <label for="package_filter" class="text-xs text-slate-500">Filter</label>
+                    <div class="mb-6 rounded-xl border border-slate-200 bg-white p-4">
+                        <form class="flex flex-col sm:flex-row gap-2 sm:items-end" @submit.prevent="applySearch()">
+                            <div class="flex-1 min-w-0">
+                                <label for="reg_search" class="block text-xs font-medium text-slate-600 mb-1">Search</label>
+                                <input
+                                    id="reg_search"
+                                    type="search"
+                                    x-model="searchQuery"
+                                    placeholder="Search name, email, order number, or custom fields"
+                                    class="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none"
+                                />
+                            </div>
+                            <div class="w-full sm:w-52 shrink-0">
+                                <label for="package_filter" class="block text-xs font-medium text-slate-600 mb-1">Package</label>
                                 <select
                                     id="package_filter"
-                                    class="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm focus:border-indigo-500 focus:outline-none"
+                                    class="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none"
                                     x-model="packageFilter"
                                     @change="applyPackageFilter()"
                                 >
@@ -423,6 +453,36 @@ document.addEventListener('alpine:init', () => {
                                     </template>
                                 </select>
                             </div>
+                            <div class="flex gap-2 shrink-0">
+                                <button
+                                    type="submit"
+                                    class="inline-flex items-center rounded-lg bg-indigo-700 px-3 py-2 text-sm font-medium text-white hover:bg-indigo-800 disabled:opacity-60"
+                                    :disabled="loading"
+                                >
+                                    Search
+                                </button>
+                                <button
+                                    type="button"
+                                    class="inline-flex items-center rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-60"
+                                    x-show="(searchQuery || '').trim() !== '' || packageFilter !== 'all'"
+                                    x-cloak
+                                    :disabled="loading"
+                                    @click="packageFilter = 'all'; clearSearch()"
+                                >
+                                    Clear
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+
+                    <div
+                        x-show="!loading && packageSummary.length > 0"
+                        x-cloak
+                        class="mb-12 rounded-xl border border-slate-200 bg-white p-4"
+                        style="display: none;"
+                    >
+                        <div class="mb-3">
+                            <h4 class="text-sm font-semibold text-slate-800">By registration package</h4>
                         </div>
                         <div class="flex flex-wrap gap-2">
                             <template x-for="bucket in packageSummary" :key="bucket.key">
@@ -542,8 +602,20 @@ document.addEventListener('alpine:init', () => {
                 class="p-6 text-slate-600 border border-slate-200 rounded-xl bg-white text-center"
                 style="display: none;"
             >
-                <h3 class="text-lg font-semibold text-slate-700">No registrants yet</h3>
-                <p class="mt-1 text-sm text-slate-500">No registrant records were found for this event.</p>
+                <template x-if="(searchQuery || '').trim() !== ''">
+                    <div>
+                        <h3 class="text-lg font-semibold text-slate-700">No matching registrants</h3>
+                        <p class="mt-1 text-sm text-slate-500">
+                            No results for “<span x-text="searchQuery"></span>”. Try a different name, email, order number, or custom field value.
+                        </p>
+                    </div>
+                </template>
+                <template x-if="(searchQuery || '').trim() === ''">
+                    <div>
+                        <h3 class="text-lg font-semibold text-slate-700">No registrants yet</h3>
+                        <p class="mt-1 text-sm text-slate-500">No registrant records were found for this event.</p>
+                    </div>
+                </template>
             </div>
 
             <div
@@ -704,7 +776,7 @@ document.addEventListener('alpine:init', () => {
                 </div>
 
                 <div
-                    x-show="pagination.total_pages > 1"
+                    x-show="pagination.total_pages > 1 || (searchQuery || '').trim() !== ''"
                     x-cloak
                     class="flex flex-col gap-3 border-t border-slate-200 px-4 py-3 sm:flex-row sm:items-center sm:justify-between"
                     style="display: none;"
@@ -718,7 +790,7 @@ document.addEventListener('alpine:init', () => {
                         <span class="font-semibold text-slate-900" x-text="formatCount(pagination.total)"></span>
                         registrants
                     </p>
-                    <div class="flex items-center gap-2">
+                    <div class="flex items-center gap-2" x-show="pagination.total_pages > 1">
                         <button
                             type="button"
                             class="rounded-lg border px-3 py-1.5 text-xs font-medium transition"
