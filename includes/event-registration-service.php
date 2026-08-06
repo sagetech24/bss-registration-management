@@ -9,7 +9,10 @@ function rm_generate_confirmation_number(): string
 }
 
 /**
- * Count guest (addon) rows for an event across confirmed and pending tables.
+ * Count guest (addon) slots used for an event.
+ *
+ * Counts confirmed `role = addon` rows in `event_registrant` only.
+ * Paid post-registration add-ons are already inserted there after payment.
  */
 function rm_v2_count_event_addons(int $event_id): int
 {
@@ -19,24 +22,13 @@ function rm_v2_count_event_addons(int $event_id): int
 
     global $wpdb;
 
-    $confirmed = (int) $wpdb->get_var(
+    return (int) $wpdb->get_var(
         $wpdb->prepare(
-            "SELECT COUNT(*) FROM `event_registrant` WHERE `event_id` = %d AND `role` = 'addon'",
+            "SELECT COUNT(*) FROM `event_registrant`
+             WHERE `event_id` = %d AND `role` = 'addon'",
             $event_id
         )
     );
-    $pending = (int) $wpdb->get_var(
-        $wpdb->prepare(
-            "SELECT COUNT(*) FROM `event_registrant_pendings` WHERE `event_id` = %d AND `role` = 'addon'",
-            $event_id
-        )
-    );
-
-    $pending_purchases = function_exists('rm_v2_count_pending_event_addon_purchase_guests')
-        ? rm_v2_count_pending_event_addon_purchase_guests($event_id)
-        : 0;
-
-    return max(0, $confirmed + $pending + $pending_purchases);
 }
 
 /**
