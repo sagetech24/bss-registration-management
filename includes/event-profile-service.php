@@ -567,6 +567,17 @@ function rm_build_event_profile_context(array $events_by_year, string $requested
     $addon_label_plural = (string) ($registration_config['guests']['label_plural'] ?? 'Guests');
     $addon_error = '';
     $addon_total = 0;
+    $addon_search = rm_get_addon_search();
+    $addon_pagination = [
+        'current_page' => 1,
+        'total_pages'  => 1,
+        'per_page'     => rm_addons_per_page(),
+        'total'        => 0,
+        'has_prev'     => false,
+        'has_next'     => false,
+        'from'         => 0,
+        'to'           => 0,
+    ];
 
     $needs_summary = $event_id > 0 && !in_array($profile_tab, ['registrants', 'addons'], true);
     $needs_addon_rows = $event_id > 0 && $profile_tab === 'addons';
@@ -581,11 +592,22 @@ function rm_build_event_profile_context(array $events_by_year, string $requested
             }
             if ($needs_addon_rows) {
                 $presented_addons = rm_present_event_addon_rows($db_fetch['registrants'], $selected_event);
-                $addon_rows = $presented_addons['rows'];
                 $addon_columns = $presented_addons['columns'];
                 $addon_label_singular = $presented_addons['label_singular'];
                 $addon_label_plural = $presented_addons['label_plural'];
-                $addon_total = $presented_addons['total'];
+                $addon_total = (int) ($presented_addons['total'] ?? 0);
+
+                $filtered_addon_rows = rm_filter_presented_addon_rows(
+                    $presented_addons['rows'],
+                    $addon_search
+                );
+                $paged = rm_paginate_presented_addon_rows(
+                    $filtered_addon_rows,
+                    rm_get_addons_page(),
+                    rm_addons_per_page()
+                );
+                $addon_rows = $paged['rows'];
+                $addon_pagination = $paged['pagination'];
             }
         } elseif ($needs_addon_rows) {
             $addon_error = $db_fetch['error'];
@@ -659,6 +681,8 @@ function rm_build_event_profile_context(array $events_by_year, string $requested
         'addon_label_plural'          => $addon_label_plural,
         'addon_total'                 => $addon_total,
         'addon_error'                 => $addon_error,
+        'addon_search'                => $addon_search,
+        'addon_pagination'            => $addon_pagination,
         'promotions'                  => $promotions,
         'deleted_promotions'          => $deleted_promotions,
         'active_package_count'        => $active_package_count,

@@ -488,6 +488,7 @@ function rm_present_event_addon_rows(array $registrants, ?array $event = null): 
         $primaries_by_registration[$registration_id] = [
             'full_name'    => $full_name !== '' ? $full_name : 'N/A',
             'order_number' => trim((string) ($row['orderNumber'] ?? '')),
+            'email'        => trim((string) ($row['email'] ?? '')),
         ];
     }
 
@@ -497,11 +498,17 @@ function rm_present_event_addon_rows(array $registrants, ?array $event = null): 
             continue;
         }
 
+        // Unpaid post-registration purchases are not confirmed add-on records yet.
+        if (!empty($row['_is_pending_addon_purchase'])) {
+            continue;
+        }
+
         $guest = rm_present_guest_row($row);
         $registration_id = isset($row['_registration_id']) ? (int) $row['_registration_id'] : 0;
         $primary = $primaries_by_registration[$registration_id] ?? [
             'full_name'    => 'N/A',
             'order_number' => '',
+            'email'        => '',
         ];
 
         $field_values = [];
@@ -513,15 +520,19 @@ function rm_present_event_addon_rows(array $registrants, ?array $event = null): 
         $is_paid = !empty($row['_is_paid']);
         $date_raw = (string) ($row['datestamp'] ?? '');
         $date_display = $date_raw !== '' ? rm_format_payment_transaction_datetime($date_raw) : '—';
+        $email = trim((string) ($row['email'] ?? ''));
+        $custom_responses_raw = trim((string) ($row['note'] ?? ''));
 
         $rows[] = [
             'registrant_id'          => $guest['registrant_id'],
             'order_number'           => $guest['order_number'] !== '' ? $guest['order_number'] : 'N/A',
             'full_name'              => $guest['full_name'],
+            'email'                  => $email,
             'role_label'             => $label_singular,
             'amount_display'         => $guest['amount_display'],
             'primary_name'           => $primary['full_name'],
             'primary_order_number'   => $primary['order_number'],
+            'primary_email'          => $primary['email'],
             'payment_status'         => $payment_status,
             'payment_status_label'   => $payment_status !== ''
                 ? ucwords(str_replace('_', ' ', $payment_status))
@@ -533,6 +544,7 @@ function rm_present_event_addon_rows(array $registrants, ?array $event = null): 
                 : 'Individual',
             'field_values'           => $field_values,
             'fields'                 => $guest['fields'],
+            'custom_responses_raw'   => $custom_responses_raw,
         ];
     }
 
@@ -542,6 +554,108 @@ function rm_present_event_addon_rows(array $registrants, ?array $event = null): 
         'label_singular' => $label_singular,
         'label_plural'   => $label_plural,
         'total'          => count($rows),
+    ];
+}
+
+/**
+ * Case-insensitive search across addon name, email, order number, and custom responses.
+ *
+ * @param list<array<string, mixed>> $rows
+ * @return list<array<string, mixed>>
+ */
+function rm_filter_presented_addon_rows(array $rows, string $search): array
+{
+    $needle = trim($search);
+    if ($needle === '') {
+        return $rows;
+    }
+
+    $needle_lc = function_exists('mb_strtolower') ? mb_strtolower($needle) : strtolower($needle);
+    $filtered = [];
+
+    foreach ($rows as $row) {
+        if (!is_array($row)) {
+            continue;
+        }
+
+        $parts = [
+            (string) ($row['order_number'] ?? ''),
+            (string) ($row['primary_order_number'] ?? ''),
+            (string) ($row['full_name'] ?? ''),
+            (string) ($row['primary_name'] ?? ''),
+            (string) ($row['email'] ?? ''),
+            (string) ($row['primary_email'] ?? ''),
+            (string) ($row['custom_responses_raw'] ?? ''),
+        ];
+
+        $field_values = is_array($row['field_values'] ?? null) ? $row['field_values'] : [];
+        foreach ($field_values as $value) {
+            if (is_scalar($value) || $value === null) {
+                $parts[] = (string) $value;
+            }
+        }
+
+        $fields = is_array($row['fields'] ?? null) ? $row['fields'] : [];
+        foreach ($fields as $field) {
+            if (!is_array($field)) {
+                continue;
+            }
+            $parts[] = (string) ($field['value'] ?? '');
+            $parts[] = (string) ($field['label'] ?? '');
+        }
+
+        $haystack = function_exists('mb_strtolower')
+            ? mb_strtolower(implode(' ', $parts))
+            : strtolower(implode(' ', $parts));
+
+        if ($haystack !== '' && strpos($haystack, $needle_lc) !== false) {
+            $filtered[] = $row;
+        }
+    }
+
+    return $filtered;
+}
+
+/**
+ * @param list<array<string, mixed>> $rows
+ * @return array{
+ *   rows: list<array<string, mixed>>,
+ *   pagination: array{
+ *     current_page: int,
+ *     total_pages: int,
+ *     per_page: int,
+ *     total: int,
+ *     has_prev: bool,
+ *     has_next: bool,
+ *     from: int,
+ *     to: int
+ *   }
+ * }
+ */
+function rm_paginate_presented_addon_rows(array $rows, int $page = 1, int $per_page = 25): array
+{
+    $per_page = max(1, $per_page);
+    $total = count($rows);
+    $total_pages = max(1, (int) ceil($total / $per_page));
+    $current_page = max(1, $page);
+    if ($current_page > $total_pages) {
+        $current_page = $total_pages;
+    }
+
+    $offset = ($current_page - 1) * $per_page;
+
+    return [
+        'rows'       => array_values(array_slice($rows, $offset, $per_page)),
+        'pagination' => [
+            'current_page' => $current_page,
+            'total_pages'  => $total_pages,
+            'per_page'     => $per_page,
+            'total'        => $total,
+            'has_prev'     => $current_page > 1,
+            'has_next'     => $current_page < $total_pages,
+            'from'         => $total > 0 ? $offset + 1 : 0,
+            'to'           => $total > 0 ? min($offset + $per_page, $total) : 0,
+        ],
     ];
 }
 
@@ -893,15 +1007,9 @@ function rm_fetch_registrants_from_db(int $event_id, ?array $event = null): arra
     }
 
     if (is_array($event) && rm_event_uses_v2_registration($event) && rm_event_registration_tables_exist()) {
-        $fetch = rm_fetch_v2_registrants_from_db($event_id, $event);
-        if ($fetch['error'] === '' && function_exists('rm_fetch_pending_addon_purchase_registrant_rows')) {
-            $pending_addon_rows = rm_fetch_pending_addon_purchase_registrant_rows($event_id, $event);
-            if ($pending_addon_rows !== []) {
-                $fetch['registrants'] = array_merge($fetch['registrants'], $pending_addon_rows);
-            }
-        }
-
-        return $fetch;
+        // Confirmed registrants only. Pending post-registration add-ons live in
+        // `event_addon_purchase` until paid and must not appear in admin lists/totals.
+        return rm_fetch_v2_registrants_from_db($event_id, $event);
     }
 
     global $wpdb;

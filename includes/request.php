@@ -396,6 +396,29 @@ function rm_get_registrants_page(): int
     return max(1, absint(wp_unslash((string) $_GET['reg_page'])));
 }
 
+function rm_addons_per_page(): int
+{
+    return 12;
+}
+
+function rm_get_addons_page(): int
+{
+    if (!isset($_GET['addon_page'])) {
+        return 1;
+    }
+
+    return max(1, absint(wp_unslash((string) $_GET['addon_page'])));
+}
+
+function rm_get_addon_search(): string
+{
+    if (!isset($_GET['addon_search'])) {
+        return '';
+    }
+
+    return sanitize_text_field(wp_unslash((string) $_GET['addon_search']));
+}
+
 function rm_get_registrant_payment_request_id(): string
 {
     if (!isset($_GET['payment_request_id'])) {
