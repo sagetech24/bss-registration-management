@@ -384,7 +384,7 @@ function rm_get_payment_transactions_page(): int
 
 function rm_registrants_per_page(): int
 {
-    return 25;
+    return 15;
 }
 
 function rm_get_registrants_page(): int
@@ -394,6 +394,15 @@ function rm_get_registrants_page(): int
     }
 
     return max(1, absint(wp_unslash((string) $_GET['reg_page'])));
+}
+
+function rm_get_registrant_search(): string
+{
+    if (!isset($_GET['reg_search'])) {
+        return '';
+    }
+
+    return sanitize_text_field(wp_unslash((string) $_GET['reg_search']));
 }
 
 function rm_addons_per_page(): int

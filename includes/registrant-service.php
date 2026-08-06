@@ -1256,6 +1256,59 @@ function rm_filter_registrants_by_package(array $registrants, string $package_fi
     return $filtered;
 }
 
+/**
+ * Case-insensitive search across registrant name, email, order number, and custom responses.
+ *
+ * @param array<int, array<string, mixed>> $registrants
+ * @return array<int, array<string, mixed>>
+ */
+function rm_filter_registrants_by_search(array $registrants, string $search): array
+{
+    $needle = trim($search);
+    if ($needle === '') {
+        return $registrants;
+    }
+
+    $needle_lc = function_exists('mb_strtolower') ? mb_strtolower($needle) : strtolower($needle);
+    $filtered = [];
+
+    foreach ($registrants as $row) {
+        if (!is_array($row)) {
+            continue;
+        }
+
+        $christian_name = trim((string) ($row['christianName'] ?? ''));
+        $given_name = trim((string) ($row['givenName'] ?? ''));
+        $first_name = $christian_name !== '' ? $christian_name : $given_name;
+        $last_name = trim((string) ($row['familyName'] ?? ''));
+        $full_name = trim($first_name . ' ' . $last_name);
+        if ($full_name === '') {
+            $full_name = trim((string) ($row['name'] ?? ''));
+        }
+
+        $parts = [
+            $full_name,
+            $christian_name,
+            $given_name,
+            $last_name,
+            trim((string) ($row['email'] ?? '')),
+            trim((string) ($row['orderNumber'] ?? $row['order_number'] ?? '')),
+            trim((string) ($row['note'] ?? '')),
+            trim((string) ($row['custom_responses'] ?? '')),
+        ];
+
+        $haystack = function_exists('mb_strtolower')
+            ? mb_strtolower(implode(' ', $parts))
+            : strtolower(implode(' ', $parts));
+
+        if ($haystack !== '' && strpos($haystack, $needle_lc) !== false) {
+            $filtered[] = $row;
+        }
+    }
+
+    return $filtered;
+}
+
 function rm_is_event_not_found(string $event_code, ?array $event, string $error_message): bool
 {
     if ($event_code === '' || $event !== null) {
@@ -1424,6 +1477,7 @@ function rm_build_event_registrants_data(): array
 {
     $event_id = rm_get_event_id();
     $package_filter = rm_get_package_filter();
+    $registrant_search = rm_get_registrant_search();
 
     if ($event_id < 1) {
         return [
@@ -1438,6 +1492,7 @@ function rm_build_event_registrants_data(): array
             ],
             'package_summary'     => [],
             'package_filter'      => $package_filter,
+            'registrant_search'   => $registrant_search,
             'package_options'     => [
                 ['value' => 'all', 'label' => 'All packages'],
                 ['value' => 'individual', 'label' => 'Individual'],
@@ -1466,6 +1521,7 @@ function rm_build_event_registrants_data(): array
     $table_registrants = rm_registrants_exclude_addons($all_registrants);
     $package_summary = rm_registrants_package_summary($table_registrants);
     $filtered_registrants = rm_filter_registrants_by_package($table_registrants, $package_filter);
+    $filtered_registrants = rm_filter_registrants_by_search($filtered_registrants, $registrant_search);
 
     $package_options = [
         ['value' => 'all', 'label' => 'All packages'],
@@ -1511,6 +1567,7 @@ function rm_build_event_registrants_data(): array
         'registrants_summary' => rm_registrants_summary($filtered_registrants),
         'package_summary'     => $package_summary,
         'package_filter'      => $package_filter,
+        'registrant_search'   => $registrant_search,
         'package_options'     => $package_options,
         'pagination'          => [
             'current_page' => $current_page,
