@@ -828,18 +828,22 @@ function rm_migrate_legacy_registrant_to_v2(int $legacy_id, int $event_id): arra
 }
 
 /**
- * Earliest event date to include on the migrate-registrant picker (start of previous calendar year).
+ * Earliest legacy event date to include on the migrate-registrant picker.
+ * Uses the same minimum year as legacy event fetching (2026+).
  */
 function rm_migration_event_min_timestamp(?int $now = null): int
 {
-    $now = $now ?? current_time('timestamp');
-    $previous_year = (int) wp_date('Y', $now) - 1;
-    $min_ts = strtotime((string) $previous_year . '-01-01 00:00:00');
+    $min_year = function_exists('rm_legacy_events_min_year')
+        ? rm_legacy_events_min_year()
+        : 2026;
+    $min_ts = strtotime((string) $min_year . '-01-01 00:00:00');
 
     if ($min_ts !== false) {
-        return $min_ts;
+        return (int) $min_ts;
     }
 
+    // Fallback (shouldn't happen): use previous calendar year.
+    $now = $now ?? current_time('timestamp');
     return (int) strtotime('-1 year', $now);
 }
 

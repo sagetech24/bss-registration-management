@@ -73,6 +73,42 @@ function rm_api_get(string $action, array $params = []): array
 }
 
 /**
+ * Minimum calendar year for legacy (bss_events / BSS API) events.
+ */
+function rm_legacy_events_min_year(): int
+{
+    return 2026;
+}
+
+/**
+ * Keep only legacy event year buckets from the configured minimum year upward.
+ *
+ * @param array<string, mixed> $events_by_year
+ * @return array<string, array<int, array<string, mixed>>>
+ */
+function rm_filter_legacy_events_by_min_year(array $events_by_year): array
+{
+    $min_year = rm_legacy_events_min_year();
+    $filtered = [];
+
+    foreach ($events_by_year as $year_key => $events_list) {
+        if (!is_numeric($year_key) || (int) $year_key < $min_year) {
+            continue;
+        }
+
+        if (!is_array($events_list) || $events_list === []) {
+            continue;
+        }
+
+        $filtered[(string) $year_key] = $events_list;
+    }
+
+    krsort($filtered, SORT_NUMERIC);
+
+    return $filtered;
+}
+
+/**
  * @return array{events: array, error: string}
  */
 function rm_fetch_registration_events(): array
@@ -89,7 +125,7 @@ function rm_fetch_registration_events(): array
     $events = is_array($result['data']) ? $result['data'] : [];
 
     return [
-        'events' => $events,
+        'events' => rm_filter_legacy_events_by_min_year($events),
         'error'  => '',
     ];
 }
